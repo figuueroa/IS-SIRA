@@ -8,6 +8,10 @@ import androidx.compose.material3.MaterialTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { MaterialTheme { LoginScreen() } }
+        setContent {
+            MaterialTheme {
+                IncidenciaScreen()   // para ver el inicio de sesión, cambia por: LoginScreen()
+            }
+        }
     }
 }

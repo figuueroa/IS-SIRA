@@ -42,12 +42,12 @@ private val OkFondo = Color(0xFFE8F5EC);  private val OkBorde = Color(0xFF8CC7A0
 private val ErrFondo = Color(0xFFFDEAEA); private val ErrBorde = Color(0xFFD9534F); private val ErrTexto = Color(0xFFB02A2A)
 
 /** Logo: misma altura que el texto "SIRA" y la mitad de su ancho. Cambia aquí el tamaño. */
-private val LogoAlto = 16.dp
-private val LogoAncho = 23.dp
+private val LogoAlto = 24.dp
+private val LogoAncho = 31.dp
 
 /** LOGO: para cambiarlo, copia tu imagen a app/src/main/res/drawable/ (ej. logo_sira.png)
  *  y cambia aquí el nombre: R.drawable.logo_sira. Nombres en minúsculas, sin espacios. */
-private val LogoImagen = R.drawable.ic_launcher_foreground
+private val LogoImagen = R.drawable.logo_sira
 
 /* ---------------- Autenticación ----------------
  * Hoy: repositorio de prueba. Cuando exista la base de datos, crea otra clase que
