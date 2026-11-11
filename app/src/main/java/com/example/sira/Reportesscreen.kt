@@ -34,11 +34,12 @@ private const val TODAS = "Todas"
 private enum class MensajeReporte { Ninguno, Generado, PeriodoInvalido, GenerarPrimero, ErrorExportar }
 
 @Composable
-fun ReportesScreen(onNavegar: (Seccion) -> Unit, onCerrarSesion: () -> Unit) {
+fun ReportesScreen(onNavegar: (Seccion) -> Unit, onCerrarSesion: () -> Unit, rol: RolDemo = RolDemo.Director) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val datos = rememberIncidencias()
-    val lista = datos.lista
+    val cargaCompleta = datos.estado is EstadoCargaIncidencias.Lista
+    val lista = (datos.estado as? EstadoCargaIncidencias.Lista)?.incidencias.orEmpty()
 
     var desde by rememberSaveable { mutableStateOf(primerDiaDelMes()) }
     var hasta by rememberSaveable { mutableStateOf(formatearFecha(Date())) }
@@ -53,15 +54,31 @@ fun ReportesScreen(onNavegar: (Seccion) -> Unit, onCerrarSesion: () -> Unit) {
     val filtradas =
         if (fDesde != null && fHasta != null && !fDesde.after(fHasta))
             filtrarIncidencias(lista, fDesde, fHasta, tipo.takeIf { it != TODAS })
-        else emptyList()
+                else emptyList()
 
     // Si cambian los filtros, el reporte generado ya no corresponde.
     fun cambio() { generado = null; mensaje = MensajeReporte.Ninguno }
 
-    SiraScaffold(Seccion.Reportes, "Director", onNavegar, onCerrarSesion) {
+    SiraScaffold(Seccion.Reportes, rol, onNavegar, onCerrarSesion) {
         if (datos.hayNuevas) AvisoActualizar { datos.actualizar(); cambio() }
         Text("GENERACIÓN DE REPORTES · I-07", color = Gris, fontSize = 12.sp, letterSpacing = 1.sp,
             modifier = Modifier.padding(bottom = 10.dp))
+
+        when (datos.estado) {
+            EstadoCargaIncidencias.Cargando -> Row(
+                Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(color = Azul, modifier = Modifier.size(22.dp))
+                Text("Cargando incidencias…", color = Gris, modifier = Modifier.padding(start = 10.dp))
+            }
+            EstadoCargaIncidencias.Error -> Column {
+                Mensaje("No se pudieron cargar las incidencias. El reporte no está disponible.", ErrFondo, ErrBorde, ErrTexto)
+                TextButton(onClick = { datos.actualizar(); cambio() }) { Text("Reintentar", color = Azul) }
+            }
+            is EstadoCargaIncidencias.Lista -> Unit
+        }
 
         Tarjeta {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -100,6 +117,7 @@ fun ReportesScreen(onNavegar: (Seccion) -> Unit, onCerrarSesion: () -> Unit) {
                         if (periodoOk) { generado = filtradas; mensaje = MensajeReporte.Generado }
                         else { generado = null; mensaje = MensajeReporte.PeriodoInvalido }
                     },
+                    enabled = cargaCompleta,
                     shape = RoundedCornerShape(4.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Azul, contentColor = Color.White),
                     modifier = Modifier.weight(1f).height(48.dp)
@@ -121,6 +139,7 @@ fun ReportesScreen(onNavegar: (Seccion) -> Unit, onCerrarSesion: () -> Unit) {
                             }
                         }
                     },
+                    enabled = cargaCompleta,
                     shape = RoundedCornerShape(4.dp),
                     border = BorderStroke(1.dp, Azul),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Azul),
@@ -140,7 +159,11 @@ fun ReportesScreen(onNavegar: (Seccion) -> Unit, onCerrarSesion: () -> Unit) {
         // Vista previa: resumen por tipo y por gravedad del periodo elegido
         Text("Vista previa", fontSize = 13.sp, fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
-        if (filtradas.isEmpty()) {
+        if (datos.estado == EstadoCargaIncidencias.Cargando) {
+            Text("Esperando los datos para mostrar la vista previa…", color = Gris, fontSize = 13.sp)
+        } else if (datos.estado == EstadoCargaIncidencias.Error) {
+            Text("La vista previa aparecerá cuando se carguen las incidencias.", color = Gris, fontSize = 13.sp)
+        } else if (filtradas.isEmpty()) {
             Text(if (periodoOk) "No hay incidencias en este periodo." else "Revise las fechas del periodo.",
                 color = Gris, fontSize = 13.sp)
         } else {

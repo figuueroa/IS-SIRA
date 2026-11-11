@@ -100,14 +100,26 @@ internal fun Selector(valor: String, opciones: List<String>, onElegir: (String) 
 
 /* ---------------- Estructura común: barra superior + menú de tres rayas ---------------- */
 enum class Seccion(val titulo: String) {
-    Panel("Panel"), Incidencias("Incidencias"), Reportes("Reportes"), HistorialMedico("Historial médico"),
-    RegistroExpediente("Registro médico")
+    Panel("Panel"), Incidencias("Incidencias"), ConsultaIncidencias("Consulta de incidencias"), Reportes("Reportes"), HistorialMedico("Historial médico"),
+    RegistroExpediente("Registro médico"), GestionTutores("Registro de tutores"), GestionUsuarios("Registro de usuarios"),
+    Bitacora("Bitácora"), Notificaciones("Notificaciones"), TutorIncidencias("Mis hijos e incidencias")
+}
+
+/** Reglas de navegación de la demo, en espera de RBAC validado por el backend. */
+internal fun Seccion.permitidaPara(rol: RolDemo): Boolean = when (rol) {
+    RolDemo.Administrador -> this == Seccion.GestionUsuarios || this == Seccion.GestionTutores ||
+        this == Seccion.Bitacora || this == Seccion.ConsultaIncidencias
+    RolDemo.Director -> this == Seccion.Panel || this == Seccion.Incidencias || this == Seccion.ConsultaIncidencias ||
+        this == Seccion.Reportes || this == Seccion.Notificaciones
+    RolDemo.Enfermeria -> this == Seccion.Panel || this == Seccion.HistorialMedico || this == Seccion.RegistroExpediente ||
+        this == Seccion.Incidencias || this == Seccion.Reportes || this == Seccion.Notificaciones
+    RolDemo.Tutor -> this == Seccion.TutorIncidencias || this == Seccion.Notificaciones
 }
 
 @Composable
 internal fun SiraScaffold(
     seccion: Seccion,
-    rol: String,
+    rol: RolDemo,
     onNavegar: (Seccion) -> Unit,
     onCerrarSesion: () -> Unit,
     content: @Composable ColumnScope.() -> Unit
@@ -121,14 +133,12 @@ internal fun SiraScaffold(
             ModalDrawerSheet {
                 Text("SIRA", color = Azul, fontWeight = FontWeight.Bold, fontSize = 20.sp,
                     modifier = Modifier.padding(horizontal = 28.dp, vertical = 20.dp))
-                Seccion.entries.forEach { s ->
+                Seccion.entries.filter { it.permitidaPara(rol) }.forEach { s ->
                     ItemMenu(s.titulo, seleccionado = s == seccion, habilitado = true) {
                         scope.launch { drawerState.close() }
                         if (s != seccion) onNavegar(s)
                     }
                 }
-                // Todavía no disponible: se ve atenuada y no hace nada.
-                ItemMenu("Notificaciones", seleccionado = false, habilitado = false) {}
             }
         }
     ) {
@@ -142,7 +152,7 @@ internal fun SiraScaffold(
                 }
                 LogoSira()
                 Spacer(Modifier.weight(1f))
-                Text("$rol  |  ", color = Color.White, fontSize = 11.sp)
+                Text("${rol.etiqueta}  |  ", color = Color.White, fontSize = 11.sp)
                 Text("Cerrar sesión", color = Color.White, fontSize = 11.sp,
                     modifier = Modifier.clickable { onCerrarSesion() }.padding(end = 12.dp))
             }
@@ -167,7 +177,17 @@ private fun ItemMenu(texto: String, seleccionado: Boolean, habilitado: Boolean, 
 }
 
 /* ---------------- Datos en vivo: aviso "Nueva incidencia registrada, actualice" ---------------- */
-class DatosIncidencias(val lista: List<Incidencia>, val hayNuevas: Boolean, val actualizar: () -> Unit)
+sealed interface EstadoCargaIncidencias {
+    data object Cargando : EstadoCargaIncidencias
+    data class Lista(val incidencias: List<Incidencia>) : EstadoCargaIncidencias
+    data object Error : EstadoCargaIncidencias
+}
+
+class DatosIncidencias(
+    val estado: EstadoCargaIncidencias,
+    val hayNuevas: Boolean,
+    val actualizar: () -> Unit
+)
 
 /** Carga las incidencias al entrar a la pantalla y avisa si se registra alguna nueva mientras tanto. */
 @Composable
@@ -175,12 +195,20 @@ internal fun rememberIncidencias(): DatosIncidencias {
     val repo = Servicios.incidencias
     var recarga by remember { mutableStateOf(0) }
     var versionCargada by remember { mutableStateOf(repo.version.value) }
-    val lista by produceState<List<Incidencia>>(emptyList(), recarga) {
-        versionCargada = repo.version.value
-        value = repo.listarIncidencias()
+    val estado by produceState<EstadoCargaIncidencias>(EstadoCargaIncidencias.Cargando, recarga) {
+        value = EstadoCargaIncidencias.Cargando
+        try {
+            val incidencias = repo.listarIncidencias()
+            versionCargada = repo.version.value
+            value = EstadoCargaIncidencias.Lista(incidencias)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            value = EstadoCargaIncidencias.Error
+        }
     }
     val versionActual by repo.version.collectAsStateWithLifecycle()
-    return DatosIncidencias(lista, versionActual != versionCargada) { recarga++ }
+    return DatosIncidencias(estado, versionActual != versionCargada) { recarga++ }
 }
 
 @Composable

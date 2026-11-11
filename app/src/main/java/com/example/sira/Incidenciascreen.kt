@@ -62,6 +62,8 @@ sealed interface EstadoIncidencia {
     data object ErrorRegistro : EstadoIncidencia
 }
 
+private enum class AccionSalidaIncidencia { Cancelar, Navegar, CerrarSesion }
+
 class IncidenciaViewModel(
     private val repo: IncidenciasRepository = Servicios.incidencias
 ) : ViewModel() {
@@ -106,7 +108,8 @@ class IncidenciaViewModel(
 fun IncidenciaScreen(
     onNavegar: (Seccion) -> Unit = {},
     onCerrarSesion: () -> Unit = {},
-    vm: IncidenciaViewModel = viewModel()
+    vm: IncidenciaViewModel = viewModel(),
+    rol: RolDemo = RolDemo.Director
 ) {
     val context = LocalContext.current
     val estado by vm.estado.collectAsStateWithLifecycle()
@@ -114,22 +117,57 @@ fun IncidenciaScreen(
     var alumno by rememberSaveable { mutableStateOf("") }
     var tipo by rememberSaveable { mutableStateOf("") }
     var gravedad by rememberSaveable { mutableStateOf("") }
-    var fechaHoraMillis by rememberSaveable { mutableLongStateOf(System.currentTimeMillis()) }
+    var fechaInicialMillis by rememberSaveable { mutableLongStateOf(System.currentTimeMillis()) }
+    var fechaHoraMillis by rememberSaveable { mutableLongStateOf(fechaInicialMillis) }
     var descripcion by rememberSaveable { mutableStateOf("") }
     var foto by rememberSaveable { mutableStateOf<Uri?>(null) }
     var fotoPendiente by rememberSaveable { mutableStateOf<Uri?>(null) }
     var archivoFotoPendiente by remember { mutableStateOf<File?>(null) }
     var menuFoto by remember { mutableStateOf(false) }
+    var confirmarSalida by remember { mutableStateOf(false) }
+    var accionSalida by remember { mutableStateOf<AccionSalidaIncidencia?>(null) }
+    var destinoPendiente by remember { mutableStateOf<Seccion?>(null) }
     val fechaHora = Date(fechaHoraMillis)
+    val hayBorrador = alumno.isNotBlank() || tipo.isNotBlank() || gravedad.isNotBlank() ||
+        descripcion.isNotBlank() || foto != null || fotoPendiente != null || fechaHoraMillis != fechaInicialMillis
+
+    fun limpiarFormulario(reiniciarEstado: Boolean = true) {
+        alumno = ""
+        tipo = ""
+        gravedad = ""
+        descripcion = ""
+        foto = null
+        fotoPendiente = null
+        fechaInicialMillis = System.currentTimeMillis()
+        fechaHoraMillis = fechaInicialMillis
+        if (reiniciarEstado) vm.reiniciar()
+    }
+
+    fun ejecutarSalida(accion: AccionSalidaIncidencia, destino: Seccion? = null) {
+        when (accion) {
+            AccionSalidaIncidencia.Cancelar -> limpiarFormulario()
+            AccionSalidaIncidencia.Navegar -> {
+                limpiarFormulario()
+                destino?.let(onNavegar)
+            }
+            AccionSalidaIncidencia.CerrarSesion -> {
+                limpiarFormulario()
+                onCerrarSesion()
+            }
+        }
+    }
+
+    fun solicitarSalida(accion: AccionSalidaIncidencia, destino: Seccion? = null) {
+        if (hayBorrador) {
+            accionSalida = accion
+            destinoPendiente = destino
+            confirmarSalida = true
+        } else ejecutarSalida(accion, destino)
+    }
 
     LaunchedEffect(estado) {
         if (estado == EstadoIncidencia.Exito) {
-            alumno = ""
-            tipo = ""
-            gravedad = ""
-            fechaHoraMillis = System.currentTimeMillis()
-            descripcion = ""
-            foto = null
+            limpiarFormulario(reiniciarEstado = false)
             delay(1800)
             vm.reiniciar()
         }
@@ -154,9 +192,9 @@ fun IncidenciaScreen(
 
     SiraScaffold(
         seccion = Seccion.Incidencias,
-        rol = "Director",
-        onNavegar = { vm.reiniciar(); onNavegar(it) },
-        onCerrarSesion = { vm.reiniciar(); onCerrarSesion() }
+        rol = rol,
+        onNavegar = { solicitarSalida(AccionSalidaIncidencia.Navegar, it) },
+        onCerrarSesion = { solicitarSalida(AccionSalidaIncidencia.CerrarSesion) }
     ) {
         Text("REGISTRO DE INCIDENCIA · I-02", color = Gris, fontSize = 12.sp, letterSpacing = 1.sp,
             modifier = Modifier.padding(bottom = 10.dp))
@@ -288,10 +326,7 @@ fun IncidenciaScreen(
                     modifier = Modifier.weight(1f).height(48.dp)
                 ) { Text("Registrar incidencia", fontWeight = FontWeight.Bold, fontSize = 13.sp, textAlign = TextAlign.Center) }
                 OutlinedButton(
-                    onClick = {
-                        alumno = ""; tipo = ""; gravedad = ""; fechaHoraMillis = System.currentTimeMillis(); descripcion = ""; foto = null
-                        vm.reiniciar()
-                    },
+                    onClick = { solicitarSalida(AccionSalidaIncidencia.Cancelar) },
                     shape = RoundedCornerShape(4.dp),
                     border = BorderStroke(1.dp, Azul),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Azul),
@@ -306,6 +341,29 @@ fun IncidenciaScreen(
                 EstadoIncidencia.ErrorRegistro -> Mensaje("No se pudo registrar la incidencia. Intenta de nuevo.", ErrFondo, ErrBorde, ErrTexto)
                 else -> {}
             }
+        }
+
+        if (confirmarSalida) {
+            AlertDialog(
+                onDismissRequest = { confirmarSalida = false; accionSalida = null; destinoPendiente = null },
+                title = { Text("¿Descartar el borrador?") },
+                text = { Text("La incidencia todavía no se ha registrado. Si sales ahora, perderás los datos capturados.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val accion = accionSalida
+                        val destino = destinoPendiente
+                        confirmarSalida = false
+                        accionSalida = null
+                        destinoPendiente = null
+                        if (accion != null) ejecutarSalida(accion, destino)
+                    }) { Text("Descartar", color = ErrTexto) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmarSalida = false; accionSalida = null; destinoPendiente = null }) {
+                        Text("Seguir editando", color = Azul)
+                    }
+                }
+            )
         }
 
         Text("RF-12 · Registro de incidencia", color = ErrTexto, fontSize = 11.sp, fontWeight = FontWeight.Bold,

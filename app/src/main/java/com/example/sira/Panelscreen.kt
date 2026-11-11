@@ -20,10 +20,10 @@ import androidx.compose.ui.unit.sp
 private val ColorBarra = Color(0xFF4A8FA8)
 
 @Composable
-fun PanelScreen(onNavegar: (Seccion) -> Unit, onCerrarSesion: () -> Unit) {
+fun PanelScreen(onNavegar: (Seccion) -> Unit, onCerrarSesion: () -> Unit, rol: RolDemo = RolDemo.Director) {
     // Se lee al entrar al panel; si se registra algo nuevo mientras está abierto, aparece el aviso para actualizar.
     val datos = rememberIncidencias()
-    val lista = datos.lista
+    val lista = (datos.estado as? EstadoCargaIncidencias.Lista)?.incidencias.orEmpty()
 
     val delMes = lista.filter { esMesActual(it.fecha) }
     val porTipo = delMes.groupingBy { it.tipo }.eachCount().toList().sortedByDescending { it.second }
@@ -31,33 +31,56 @@ fun PanelScreen(onNavegar: (Seccion) -> Unit, onCerrarSesion: () -> Unit) {
     val masFrecuente = porTipo.firstOrNull()?.first?.let { etiquetaCorta(it) } ?: "—"
     val maximo = porTipo.firstOrNull()?.second ?: 1
 
-    SiraScaffold(Seccion.Panel, "Director", onNavegar, onCerrarSesion) {
+    SiraScaffold(Seccion.Panel, rol, onNavegar, onCerrarSesion) {
         if (datos.hayNuevas) AvisoActualizar(datos.actualizar)
         Text("PANEL DE ESTADÍSTICAS · I-06", color = Gris, fontSize = 12.sp, letterSpacing = 1.sp,
             modifier = Modifier.padding(bottom = 10.dp))
 
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Dato("${delMes.size}", "Incidencias del mes", 26.sp, Modifier.weight(1f))
-            Dato("$alertas", "Alertas de gravedad alta", 26.sp, Modifier.weight(1f))
-            Dato(masFrecuente, "Tipo más frecuente", 17.sp, Modifier.weight(1f))
-        }
+        when (datos.estado) {
+            EstadoCargaIncidencias.Cargando -> Row(
+                Modifier.fillMaxWidth().padding(vertical = 28.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(color = Azul, modifier = Modifier.size(24.dp))
+                Text("Cargando incidencias…", color = Gris, modifier = Modifier.padding(start = 12.dp))
+            }
+            EstadoCargaIncidencias.Error -> Column {
+                Mensaje("No se pudieron cargar las incidencias.", ErrFondo, ErrBorde, ErrTexto)
+                TextButton(onClick = datos.actualizar) { Text("Reintentar", color = Azul) }
+            }
+            is EstadoCargaIncidencias.Lista -> {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Dato("${delMes.size}", "Incidencias del mes", 26.sp, Modifier.weight(1f))
+                    Dato("$alertas", "Alertas de gravedad alta", 26.sp, Modifier.weight(1f))
+                    Dato(masFrecuente, "Tipo más frecuente", 17.sp, Modifier.weight(1f))
+                }
 
-        Text("Incidencias por tipo", fontSize = 13.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(top = 20.dp, bottom = 8.dp))
+                Text("Incidencias por tipo", fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 20.dp, bottom = 8.dp))
 
-        if (porTipo.isEmpty()) {
-            Text("Todavía no hay incidencias este mes.", color = Gris, fontSize = 13.sp)
-        } else {
-            porTipo.forEach { (tipo, cantidad) ->
-                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(etiquetaCorta(tipo), fontSize = 12.sp, modifier = Modifier.width(72.dp))
-                    Box(Modifier.weight(1f).height(18.dp)) {
-                        Box(
-                            Modifier.fillMaxWidth(cantidad.toFloat() / maximo).fillMaxHeight()
-                                .background(ColorBarra, RoundedCornerShape(2.dp))
-                        )
+                if (porTipo.isEmpty()) {
+                    Text("Todavía no hay incidencias este mes.", color = Gris, fontSize = 13.sp)
+                    OutlinedButton(
+                        onClick = { onNavegar(Seccion.Incidencias) },
+                        shape = RoundedCornerShape(4.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Azul),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Azul),
+                        modifier = Modifier.padding(top = 8.dp).height(44.dp)
+                    ) { Text("Registrar incidencia", fontWeight = FontWeight.SemiBold) }
+                } else {
+                    porTipo.forEach { (tipo, cantidad) ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(etiquetaCorta(tipo), fontSize = 12.sp, modifier = Modifier.width(72.dp))
+                            Box(Modifier.weight(1f).height(18.dp)) {
+                                Box(
+                                    Modifier.fillMaxWidth(cantidad.toFloat() / maximo).fillMaxHeight()
+                                        .background(ColorBarra, RoundedCornerShape(2.dp))
+                                )
+                            }
+                            Text("$cantidad", fontSize = 12.sp, textAlign = TextAlign.End, modifier = Modifier.width(28.dp))
+                        }
                     }
-                    Text("$cantidad", fontSize = 12.sp, textAlign = TextAlign.End, modifier = Modifier.width(28.dp))
                 }
             }
         }

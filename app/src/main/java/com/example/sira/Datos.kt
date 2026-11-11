@@ -5,6 +5,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.withLock
 import java.text.Normalizer
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -14,6 +15,78 @@ import java.util.Locale
 /* ---------------- Modelos ---------------- */
 data class Alumno(val matricula: String, val nombre: String)
 
+data class TutorVinculado(val nombre: String, val correo: String, val telefono: String, val alumno: Alumno)
+
+sealed interface ResultadoVinculoTutor {
+    data object Exito : ResultadoVinculoTutor
+    data object VinculoDuplicado : ResultadoVinculoTutor
+    data object CorreoEnUso : ResultadoVinculoTutor
+}
+
+interface TutoresRepository {
+    suspend fun listar(): List<TutorVinculado>
+    suspend fun registrar(tutor: TutorVinculado): ResultadoVinculoTutor
+}
+
+object ServiciosTutores {
+    val repositorio: TutoresRepository = FakeTutoresRepository()
+}
+
+enum class RolDemo(val etiqueta: String) {
+    Administrador("Administrador"), Director("Director"), Enfermeria("Enfermería"), Tutor("Madre, padre o tutor")
+}
+
+data class UsuarioDemo(val nombre: String, val correo: String, val rol: RolDemo)
+
+sealed interface ResultadoRegistroUsuario {
+    data object Exito : ResultadoRegistroUsuario
+    data object CorreoDuplicado : ResultadoRegistroUsuario
+}
+
+interface UsuariosRepository {
+    suspend fun listar(): List<UsuarioDemo>
+    suspend fun registrar(usuario: UsuarioDemo): ResultadoRegistroUsuario
+}
+
+object ServiciosUsuarios {
+    val repositorio: UsuariosRepository = FakeUsuariosRepository()
+}
+
+private class FakeUsuariosRepository : UsuariosRepository {
+    private val mutex = kotlinx.coroutines.sync.Mutex()
+    private val usuarios = mutableListOf<UsuarioDemo>()
+
+    override suspend fun listar(): List<UsuarioDemo> = mutex.withLock { usuarios.toList() }
+
+    override suspend fun registrar(usuario: UsuarioDemo): ResultadoRegistroUsuario = mutex.withLock {
+        if (usuarios.any { it.correo.equals(usuario.correo.trim(), ignoreCase = true) }) {
+            return@withLock ResultadoRegistroUsuario.CorreoDuplicado
+        }
+        usuarios += usuario.copy(correo = usuario.correo.trim().lowercase())
+        ResultadoRegistroUsuario.Exito
+    }
+}
+
+private class FakeTutoresRepository : TutoresRepository {
+    private val mutex = kotlinx.coroutines.sync.Mutex()
+    private val vinculados = mutableListOf<TutorVinculado>()
+
+    override suspend fun listar(): List<TutorVinculado> = mutex.withLock { vinculados.toList() }
+
+    override suspend fun registrar(tutor: TutorVinculado): ResultadoVinculoTutor = mutex.withLock {
+        val correo = tutor.correo.trim().lowercase()
+        val existente = vinculados.firstOrNull { it.correo.trim().lowercase() == correo }
+        if (existente != null && (existente.nombre != tutor.nombre || existente.telefono != tutor.telefono)) {
+            return@withLock ResultadoVinculoTutor.CorreoEnUso
+        }
+        if (vinculados.any { it.correo.trim().equals(correo, ignoreCase = true) && it.alumno.matricula == tutor.alumno.matricula }) {
+            return@withLock ResultadoVinculoTutor.VinculoDuplicado
+        }
+        vinculados += tutor.copy(correo = correo)
+        ResultadoVinculoTutor.Exito
+    }
+}
+
 data class Incidencia(
     val id: Int,
     val alumno: Alumno,
@@ -21,6 +94,19 @@ data class Incidencia(
     val gravedad: String,
     val fecha: Date,
     val descripcion: String = ""
+)
+
+data class EventoBitacora(
+    val id: Int,
+    val incidenciaId: Int,
+    val accion: String,
+    val alumno: Alumno,
+    val tipo: String,
+    val gravedad: String,
+    val fechaIncidente: Date,
+    val registradoEn: Date,
+    val resumen: String,
+    val actor: String? = null
 )
 
 data class ResumenTipo(val tipo: String, val total: Int, val baja: Int, val media: Int, val fuerte: Int)
@@ -100,7 +186,10 @@ fun filtrarIncidencias(lista: List<Incidencia>, desde: Date, hasta: Date, tipo: 
 interface IncidenciasRepository {
     suspend fun buscarAlumno(texto: String): Alumno?
     suspend fun registrar(alumno: Alumno, tipo: String, gravedad: String, fecha: Date, descripcion: String, foto: Uri?): Boolean
+    suspend fun actualizar(incidencia: Incidencia): Boolean
+    suspend fun eliminar(id: Int): Boolean
     suspend fun listarIncidencias(): List<Incidencia>
+    suspend fun listarBitacora(): List<EventoBitacora>
 
     /** Número que sube cada vez que se registra una incidencia nueva.
      *  Con base de datos: haz que cambie cuando el servidor avise de datos nuevos (o revisando cada cierto tiempo). */
@@ -112,22 +201,61 @@ object Servicios {
 }
 
 private object AlmacenLocal {
-    val alumnos = listOf(
+    val alumnos = alumnosPrueba
+
+    val incidencias = mutableListOf<Incidencia>()
+    val bitacora = mutableListOf<EventoBitacora>()
+    val version = MutableStateFlow(0)
+    val versionBitacora = MutableStateFlow(0)
+    private var siguienteId = 1
+    private var siguienteEventoId = 1
+
+    fun agregar(alumno: Alumno, tipo: String, gravedad: String, fecha: Date, descripcion: String) {
+        val incidencia = Incidencia(siguienteId++, alumno, tipo, gravedad, fecha, descripcion)
+        incidencias += incidencia
+        agregarEvento(incidencia, "Registrada", "Tipo: $tipo · Gravedad: $gravedad")
+        version.value = version.value + 1
+    }
+
+    fun editar(anterior: Incidencia, actualizada: Incidencia) {
+        val indice = incidencias.indexOfFirst { it.id == actualizada.id }
+        if (indice < 0) return
+        incidencias[indice] = actualizada
+        val cambios = buildList {
+            if (anterior.tipo != actualizada.tipo) add("Tipo: ${anterior.tipo} → ${actualizada.tipo}")
+            if (anterior.gravedad != actualizada.gravedad) add("Gravedad: ${anterior.gravedad} → ${actualizada.gravedad}")
+            if (anterior.descripcion != actualizada.descripcion) add("Descripción actualizada")
+        }.joinToString(" · ").ifBlank { "Se guardó la edición sin cambios en los campos." }
+        agregarEvento(actualizada, "Editada", cambios)
+        version.value = version.value + 1
+    }
+
+    fun eliminar(id: Int): Boolean {
+        val indice = incidencias.indexOfFirst { it.id == id }
+        if (indice < 0) return false
+        val eliminada = incidencias.removeAt(indice)
+        agregarEvento(eliminada, "Eliminada", "Incidencia eliminada")
+        version.value = version.value + 1
+        return true
+    }
+
+    private fun agregarEvento(incidencia: Incidencia, accion: String, resumen: String) {
+        bitacora += EventoBitacora(
+            id = siguienteEventoId++, incidenciaId = incidencia.id, accion = accion,
+            alumno = incidencia.alumno, tipo = incidencia.tipo, gravedad = incidencia.gravedad,
+            fechaIncidente = incidencia.fecha, registradoEn = Date(), resumen = resumen
+        )
+        versionBitacora.value = versionBitacora.value + 1
+    }
+}
+
+internal val alumnosPrueba = listOf(
         Alumno("19071726", "Bañuelos Martinez Jesus Rogelio"),
         Alumno("19071801", "Ramirez Lopez Ana Sofia"),
         Alumno("19071845", "Hernandez Garcia Carlos Daniel"),
-        Alumno("19071902", "Torres Mendoza Maria Fernanda")
+        Alumno("19071902", "Torres Mendoza Maria Fernanda"),
+        Alumno(matricula= "00000000", nombre = "ajo")
     )
-
-    val incidencias = mutableListOf<Incidencia>()
-    val version = MutableStateFlow(0)
-    private var siguienteId = 1
-
-    fun agregar(alumno: Alumno, tipo: String, gravedad: String, fecha: Date, descripcion: String) {
-        incidencias += Incidencia(siguienteId++, alumno, tipo, gravedad, fecha, descripcion)
-        version.value = version.value + 1
-    }
-}
 
 class FakeIncidenciasRepository : IncidenciasRepository {
 
@@ -156,7 +284,22 @@ class FakeIncidenciasRepository : IncidenciasRepository {
         return true
     }
 
+    override suspend fun actualizar(incidencia: Incidencia): Boolean {
+        delay(300)
+        val indice = AlmacenLocal.incidencias.indexOfFirst { it.id == incidencia.id }
+        if (indice < 0) return false
+        AlmacenLocal.editar(AlmacenLocal.incidencias[indice], incidencia)
+        return true
+    }
+
+    override suspend fun eliminar(id: Int): Boolean {
+        delay(300)
+        return AlmacenLocal.eliminar(id)
+    }
+
     override suspend fun listarIncidencias(): List<Incidencia> = AlmacenLocal.incidencias.toList()
+
+    override suspend fun listarBitacora(): List<EventoBitacora> = AlmacenLocal.bitacora.asReversed().toList()
 
     override val version: StateFlow<Int> = AlmacenLocal.version.asStateFlow()
 

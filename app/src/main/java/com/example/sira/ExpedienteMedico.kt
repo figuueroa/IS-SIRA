@@ -13,6 +13,9 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.Update
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 import java.security.KeyStore
 import java.security.SecureRandom
@@ -27,8 +30,18 @@ data class ExpedienteMedico(
     val padecimientos: String,
     val medicamentos: String,
     val contactoEmergencia: String,
-    val telefonoEmergencia: String
+    val telefonoEmergencia: String,
+    val creadoEn: Long? = null,
+    val actualizadoEn: Long? = null,
+    val actualizadoPor: String? = null
 )
+
+/** Permite números locales o internacionales y exige entre 10 y 15 dígitos. */
+internal fun telefonoEmergenciaValido(telefono: String): Boolean {
+    val normalizado = telefono.trim()
+    if (!normalizado.matches(Regex("\\+?[0-9()\\s-]+"))) return false
+    return normalizado.count(Char::isDigit) in 10..15
+}
 
 @Entity(tableName = "expedientes_medicos")
 data class ExpedienteMedicoEntity(
@@ -38,7 +51,10 @@ data class ExpedienteMedicoEntity(
     val padecimientos: String,
     val medicamentos: String,
     val contactoEmergencia: String,
-    val telefonoEmergencia: String
+    val telefonoEmergencia: String,
+    val creadoEn: Long?,
+    val actualizadoEn: Long?,
+    val actualizadoPor: String?
 )
 
 @Dao
@@ -48,17 +64,29 @@ interface ExpedienteMedicoDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertar(expediente: ExpedienteMedicoEntity): Long
+
+    @Update
+    suspend fun actualizar(expediente: ExpedienteMedicoEntity): Int
 }
 
-@Database(entities = [ExpedienteMedicoEntity::class], version = 1, exportSchema = false)
+@Database(entities = [ExpedienteMedicoEntity::class], version = 2, exportSchema = false)
 abstract class SiraDatabase : RoomDatabase() {
     abstract fun expedientesDao(): ExpedienteMedicoDao
+}
+
+private val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE expedientes_medicos ADD COLUMN creadoEn INTEGER")
+        db.execSQL("ALTER TABLE expedientes_medicos ADD COLUMN actualizadoEn INTEGER")
+        db.execSQL("ALTER TABLE expedientes_medicos ADD COLUMN actualizadoPor TEXT")
+    }
 }
 
 interface ExpedienteMedicoRepository {
     suspend fun obtener(matricula: String): ExpedienteMedico?
     /** Devuelve false si ya existe un expediente para la matrícula. */
     suspend fun insertar(expediente: ExpedienteMedico): Boolean
+    suspend fun actualizar(expediente: ExpedienteMedico): Boolean
 }
 
 private class RoomExpedienteMedicoRepository(private val dao: ExpedienteMedicoDao) : ExpedienteMedicoRepository {
@@ -66,6 +94,9 @@ private class RoomExpedienteMedicoRepository(private val dao: ExpedienteMedicoDa
 
     override suspend fun insertar(expediente: ExpedienteMedico): Boolean =
         dao.insertar(expediente.toEntity()) != -1L
+
+    override suspend fun actualizar(expediente: ExpedienteMedico): Boolean =
+        dao.actualizar(expediente.toEntity()) == 1
 }
 
 object ServiciosExpedientes {
@@ -84,6 +115,7 @@ object ServiciosExpedientes {
                 val factory = SupportOpenHelperFactory(ClaveBaseDatos.obtener(appContext))
                 val db = Room.databaseBuilder(appContext, SiraDatabase::class.java, "sira_medica.db")
                     .openHelperFactory(factory)
+                    .addMigrations(MIGRATION_1_2)
                     .build()
                 instancia = RoomExpedienteMedicoRepository(db.expedientesDao())
             }
@@ -148,9 +180,11 @@ private object ClaveBaseDatos {
 }
 
 private fun ExpedienteMedicoEntity.toModelo() = ExpedienteMedico(
-    matriculaAlumno, tipoSangre, alergias, padecimientos, medicamentos, contactoEmergencia, telefonoEmergencia
+    matriculaAlumno, tipoSangre, alergias, padecimientos, medicamentos, contactoEmergencia, telefonoEmergencia,
+    creadoEn, actualizadoEn, actualizadoPor
 )
 
 private fun ExpedienteMedico.toEntity() = ExpedienteMedicoEntity(
-    matriculaAlumno, tipoSangre, alergias, padecimientos, medicamentos, contactoEmergencia, telefonoEmergencia
+    matriculaAlumno, tipoSangre, alergias, padecimientos, medicamentos, contactoEmergencia, telefonoEmergencia,
+    creadoEn, actualizadoEn, actualizadoPor
 )

@@ -62,6 +62,8 @@ data class RecuperarUiState(
     val fase: FaseRecuperacion = FaseRecuperacion.Formulario,
     val cargando: Boolean = false,
     val error: ErrorRecuperacion? = null,
+    /** Evita presentar como enviado un correo que el repositorio local no envió. */
+    val modoDemostracion: Boolean = false,
     /** Correo al que se pidió el enlace (se usa para reenviar). */
     val correo: String = "",
     /** Segundos que faltan para poder reenviar; 0 = ya se puede. */
@@ -107,16 +109,24 @@ class RecuperarViewModel(
         if (_ui.value.cargando) return                       // evita doble envío
         _ui.update { it.copy(cargando = true, error = null) }
         viewModelScope.launch {
-            val ok = try {
+            val resultado = try {
                 repo.solicitarRecuperacion(correo)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                false
+                null
             }
-            if (ok) {
-                _ui.update { it.copy(cargando = false, fase = FaseRecuperacion.Enviado, correo = correo) }
-                iniciarCuentaAtras()
+            if (resultado != null) {
+                val demostracion = resultado == ResultadoSolicitudRecuperacion.DemostracionLocal
+                _ui.update {
+                    it.copy(
+                        cargando = false,
+                        fase = FaseRecuperacion.Enviado,
+                        correo = correo,
+                        modoDemostracion = demostracion
+                    )
+                }
+                if (!demostracion) iniciarCuentaAtras()
             } else {
                 _ui.update { it.copy(cargando = false, error = ErrorRecuperacion.SinConexion) }
             }
@@ -137,7 +147,11 @@ class RecuperarViewModel(
 
 /* ---------------- Pantalla ---------------- */
 @Composable
-fun RecuperarScreen(onVolver: () -> Unit, vm: RecuperarViewModel = viewModel()) {
+fun RecuperarScreen(
+    onVolver: () -> Unit,
+    vm: RecuperarViewModel = viewModel(),
+    onAbrirNuevaPasswordDemo: () -> Unit = {}
+) {
     val ui by vm.ui.collectAsStateWithLifecycle()
     val volver = { vm.reiniciar(); onVolver() }
     BackHandler(onBack = volver)
@@ -159,7 +173,8 @@ fun RecuperarScreen(onVolver: () -> Unit, vm: RecuperarViewModel = viewModel()) 
                         ui = ui, onEnviar = vm::enviar, onEditar = vm::alEditar, onVolver = volver
                     )
                     FaseRecuperacion.Enviado -> EnviadoRecuperar(
-                        ui = ui, onReenviar = vm::reenviar, onVolver = volver
+                        ui = ui, onReenviar = vm::reenviar, onVolver = volver,
+                        onAbrirNuevaPasswordDemo = onAbrirNuevaPasswordDemo
                     )
                 }
             }
@@ -243,7 +258,8 @@ private fun FormularioRecuperar(
 private fun EnviadoRecuperar(
     ui: RecuperarUiState,
     onReenviar: () -> Unit,
-    onVolver: () -> Unit
+    onVolver: () -> Unit,
+    onAbrirNuevaPasswordDemo: () -> Unit
 ) {
     val puedeReenviar = ui.segundosReenvio == 0 && !ui.cargando
 
@@ -252,13 +268,27 @@ private fun EnviadoRecuperar(
         Text("Sistema de Incidencias y Respuestas Auxiliares", color = Gris, fontSize = 12.sp,
             textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 4.dp))
 
-        // Mensaje neutro a propósito: no revela si el correo está o no registrado.
-        Box(Modifier.semantics { liveRegion = LiveRegionMode.Polite }) {
-            Mensaje("Si el correo está registrado en SIRA, recibirá un enlace para restablecer su contraseña en unos minutos.",
-                OkFondo, OkBorde, OkTexto)
+        if (ui.modoDemostracion) {
+            Box(Modifier.semantics { liveRegion = LiveRegionMode.Polite }) {
+                AvisoError("Modo demostración: no se envió ningún correo. La recuperación estará disponible al conectar el servicio de autenticación.")
+            }
+            Text("El enlace temporal y la definición de una nueva contraseña requieren el backend.", fontSize = 13.sp,
+                modifier = Modifier.padding(top = 14.dp, bottom = 16.dp))
+            if (BuildConfig.DEBUG) {
+                TextButton(
+                    onClick = onAbrirNuevaPasswordDemo,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Probar pantalla de nueva contraseña", color = Azul) }
+            }
+        } else {
+            // Mensaje neutro: no revela si el correo está registrado.
+            Box(Modifier.semantics { liveRegion = LiveRegionMode.Polite }) {
+                Mensaje("Si el correo está registrado en SIRA, recibirá un enlace para restablecer su contraseña en unos minutos.",
+                    OkFondo, OkBorde, OkTexto)
+            }
+            Text("Si no lo encuentra, revise la carpeta de correo no deseado.", fontSize = 13.sp,
+                modifier = Modifier.padding(top = 14.dp, bottom = 16.dp))
         }
-        Text("Si no lo encuentra, revise la carpeta de correo no deseado.", fontSize = 13.sp,
-            modifier = Modifier.padding(top = 14.dp, bottom = 16.dp))
 
         Button(
             onClick = onVolver,
@@ -269,7 +299,7 @@ private fun EnviadoRecuperar(
 
         if (ui.error == ErrorRecuperacion.SinConexion) AvisoError("No se pudo reenviar el enlace. Revise su conexión e intente de nuevo.")
 
-        Row(
+        if (!ui.modoDemostracion) Row(
             Modifier.fillMaxWidth().padding(top = 8.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
@@ -323,6 +353,6 @@ private fun PreviewFormularioError() = MaterialTheme {
 @Composable
 private fun PreviewEnviado() = MaterialTheme {
     Column(Modifier.padding(16.dp)) {
-        EnviadoRecuperar(RecuperarUiState(fase = FaseRecuperacion.Enviado, correo = "a@b.mx", segundosReenvio = 42), {}, {})
+        EnviadoRecuperar(RecuperarUiState(fase = FaseRecuperacion.Enviado, correo = "a@b.mx", segundosReenvio = 42), {}, {}, {})
     }
 }

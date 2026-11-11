@@ -21,7 +21,19 @@ android {
     }
 
     buildTypes {
+        debug {
+            buildConfigField("String", "DEMO_LOGIN_EMAIL", "\"demo@sira.app\"")
+            buildConfigField("String", "DEMO_LOGIN_PASSWORD", "\"1234\"")
+            buildConfigField("String", "DEMO_ADMIN_EMAIL", "\"admin@sira.app\"")
+            buildConfigField("String", "DEMO_NURSE_EMAIL", "\"enfermeria@sira.app\"")
+            buildConfigField("String", "DEMO_TUTOR_EMAIL", "\"tutor@sira.app\"")
+        }
         release {
+            buildConfigField("String", "DEMO_LOGIN_EMAIL", "\"\"")
+            buildConfigField("String", "DEMO_LOGIN_PASSWORD", "\"\"")
+            buildConfigField("String", "DEMO_ADMIN_EMAIL", "\"\"")
+            buildConfigField("String", "DEMO_NURSE_EMAIL", "\"\"")
+            buildConfigField("String", "DEMO_TUTOR_EMAIL", "\"\"")
             optimization {
                 enable = true
                 packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
@@ -34,6 +46,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

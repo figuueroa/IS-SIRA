@@ -42,6 +42,7 @@ sealed interface EstadoRegistroExpediente {
     data object Guardando : EstadoRegistroExpediente
     data object SinAlumno : EstadoRegistroExpediente
     data class DatosInvalidos(val alumno: Alumno) : EstadoRegistroExpediente
+    data class TelefonoInvalido(val alumno: Alumno) : EstadoRegistroExpediente
     data object Duplicado : EstadoRegistroExpediente
     data object Exito : EstadoRegistroExpediente
     data class Error(val alumno: Alumno? = null) : EstadoRegistroExpediente
@@ -92,12 +93,17 @@ class RegistrarExpedienteViewModel(
             _estado.value = EstadoRegistroExpediente.DatosInvalidos(alumno)
             return
         }
+        if (!telefonoEmergenciaValido(telefono)) {
+            _estado.value = EstadoRegistroExpediente.TelefonoInvalido(alumno)
+            return
+        }
         _estado.value = EstadoRegistroExpediente.Guardando
         viewModelScope.launch {
             _estado.value = try {
+                val ahora = System.currentTimeMillis()
                 val expediente = ExpedienteMedico(
                     alumno.matricula, tipoSangre.trim(), alergias.trim(), padecimientos.trim(),
-                    medicamentos.trim(), contacto.trim(), telefono.trim()
+                    medicamentos.trim(), contacto.trim(), telefono.trim(), creadoEn = ahora, actualizadoEn = ahora
                 )
                 if (expedientes.insertar(expediente)) EstadoRegistroExpediente.Exito
                 else EstadoRegistroExpediente.Duplicado
@@ -112,6 +118,7 @@ class RegistrarExpedienteViewModel(
     fun limpiarMensaje() {
         when (val actual = _estado.value) {
             is EstadoRegistroExpediente.DatosInvalidos -> _estado.value = EstadoRegistroExpediente.AlumnoDisponible(actual.alumno)
+            is EstadoRegistroExpediente.TelefonoInvalido -> _estado.value = EstadoRegistroExpediente.AlumnoDisponible(actual.alumno)
             is EstadoRegistroExpediente.Error -> _estado.value = actual.alumno?.let { EstadoRegistroExpediente.AlumnoDisponible(it) }
                 ?: EstadoRegistroExpediente.Inicial
             else -> if (actual !is EstadoRegistroExpediente.AlumnoDisponible) _estado.value = EstadoRegistroExpediente.Inicial
@@ -134,7 +141,7 @@ fun RegistrarExpedienteScreen(
     var contacto by rememberSaveable { mutableStateOf("") }
     var telefono by rememberSaveable { mutableStateOf("") }
 
-    SiraScaffold(Seccion.RegistroExpediente, "Enfermería", onNavegar, onCerrarSesion) {
+    SiraScaffold(Seccion.RegistroExpediente, RolDemo.Enfermeria, onNavegar, onCerrarSesion) {
         Text("REGISTRO MÉDICO DEL ALUMNO · HU-6", color = Gris, fontSize = 12.sp, letterSpacing = 1.sp,
             modifier = Modifier.padding(bottom = 10.dp))
 
@@ -173,6 +180,10 @@ fun RegistrarExpedienteScreen(
                 Mensaje("Completa todos los campos obligatorios. Si un dato no se conoce, indícalo explícitamente.", ErrFondo, ErrBorde, ErrTexto)
                 TextButton(onClick = { vm.limpiarMensaje() }) { Text("Volver al formulario", color = Azul) }
             }
+            is EstadoRegistroExpediente.TelefonoInvalido -> Column {
+                Mensaje("El teléfono debe incluir entre 10 y 15 dígitos.", ErrFondo, ErrBorde, ErrTexto)
+                TextButton(onClick = { vm.limpiarMensaje() }) { Text("Volver al formulario", color = Azul) }
+            }
             EstadoRegistroExpediente.Duplicado -> Column {
                 Mensaje("Este alumno ya tiene un expediente médico registrado. Consulta Historial médico para revisarlo.", ErrFondo, ErrBorde, ErrTexto)
                 Button(
@@ -181,7 +192,7 @@ fun RegistrarExpedienteScreen(
                 ) { Text("Abrir historial") }
             }
             EstadoRegistroExpediente.Exito -> Mensaje(
-                "Expediente guardado en esta sesión de demostración.", OkFondo, OkBorde, OkTexto
+                "Expediente guardado cifrado en este dispositivo.", OkFondo, OkBorde, OkTexto
             )
             is EstadoRegistroExpediente.Error -> Column {
                 Mensaje("No se pudo guardar el expediente. Intenta de nuevo.", ErrFondo, ErrBorde, ErrTexto)
