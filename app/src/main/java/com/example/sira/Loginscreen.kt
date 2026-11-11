@@ -32,23 +32,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/* ---------------- Colores y medidas (tomados del documento) ---------------- */
-private val Azul = Color(0xFF1F5B73)
-private val AzulClaro = Color(0xFF7096A8)
-private val FondoTarjeta = Color(0xFFF8F9FB)
-private val BordeTarjeta = Color(0xFFD5DCE1)
-private val Gris = Color(0xFF6B7780)
-private val OkFondo = Color(0xFFE8F5EC);  private val OkBorde = Color(0xFF8CC7A0);  private val OkTexto = Color(0xFF14612E)
-private val ErrFondo = Color(0xFFFDEAEA); private val ErrBorde = Color(0xFFD9534F); private val ErrTexto = Color(0xFFB02A2A)
-
-/** Logo: misma altura que el texto "SIRA" y la mitad de su ancho. Cambia aquí el tamaño. */
-private val LogoAlto = 24.dp
-private val LogoAncho = 31.dp
-
-/** LOGO: para cambiarlo, copia tu imagen a app/src/main/res/drawable/ (ej. logo_sira.png)
- *  y cambia aquí el nombre: R.drawable.logo_sira. Nombres en minúsculas, sin espacios. */
-private val LogoImagen = R.drawable.logo_sira
-
 /* ---------------- Autenticación ----------------
  * Hoy: repositorio de prueba. Cuando exista la base de datos, crea otra clase que
  * implemente AuthRepository (Retrofit al servidor, Room, etc.) y pásala al ViewModel.
@@ -87,12 +70,21 @@ class LoginViewModel(
             _estado.value = if (ok) EstadoLogin.Exito else EstadoLogin.Error
         }
     }
+
+    fun reiniciar() { _estado.value = EstadoLogin.Inactivo }
 }
 
 /* ---------------- Pantalla ---------------- */
 @Composable
-fun LoginScreen(vm: LoginViewModel = viewModel()) {
+fun LoginScreen(vm: LoginViewModel = viewModel(), onExito: () -> Unit = {}) {
     val estado by vm.estado.collectAsStateWithLifecycle()
+    LaunchedEffect(estado) {
+        if (estado == EstadoLogin.Exito) {
+            delay(1200)        // deja ver el mensaje verde
+            vm.reiniciar()
+            onExito()
+        }
+    }
     var correo by remember { mutableStateOf("") }
     var clave by remember { mutableStateOf("") }
 
@@ -101,7 +93,7 @@ fun LoginScreen(vm: LoginViewModel = viewModel()) {
         Box(
             Modifier.fillMaxWidth().height(46.dp).background(Azul).padding(horizontal = 20.dp),
             contentAlignment = Alignment.CenterStart
-        ) { LogoEditable() }
+        ) { LogoSira() }
 
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
@@ -161,30 +153,4 @@ fun LoginScreen(vm: LoginViewModel = viewModel()) {
         Text("RF-01 / RF-21 · Inicio de sesión", color = ErrTexto, fontSize = 11.sp, fontWeight = FontWeight.Bold,
             textAlign = TextAlign.End, modifier = Modifier.fillMaxWidth().padding(end = 16.dp, bottom = 10.dp))
     }
-}
-
-@Composable private fun Etiqueta(texto: String, modifier: Modifier = Modifier) =
-    Text(texto, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = modifier.padding(bottom = 4.dp))
-
-@Composable private fun camposColores() = OutlinedTextFieldDefaults.colors(
-    focusedContainerColor = Color.White, unfocusedContainerColor = Color.White,
-    focusedBorderColor = Azul, unfocusedBorderColor = Color(0xFF9AA7B0)
-)
-
-@Composable private fun Mensaje(texto: String, fondo: Color, borde: Color, color: Color) =
-    Text(texto, color = color, fontSize = 14.sp,
-        modifier = Modifier.fillMaxWidth().padding(top = 14.dp)
-            .background(fondo, RoundedCornerShape(4.dp))
-            .border(1.dp, borde, RoundedCornerShape(4.dp))
-            .padding(14.dp))
-
-/* ---------------- Logo ---------------- */
-@Composable
-private fun LogoEditable() {
-    Image(
-        painter = painterResource(LogoImagen),
-        contentDescription = "Logo",
-        contentScale = ContentScale.Fit,
-        modifier = Modifier.size(LogoAncho, LogoAlto)
-    )
 }
