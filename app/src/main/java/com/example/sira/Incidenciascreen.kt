@@ -108,7 +108,7 @@ fun IncidenciaScreen(
 
     SiraScaffold(
         seccion = Seccion.Incidencias,
-        rol = "Director / Tutor",
+        rol = "Director",
         onNavegar = { vm.reiniciar(); onNavegar(it) },
         onCerrarSesion = { vm.reiniciar(); onCerrarSesion() }
     ) {
@@ -119,7 +119,7 @@ fun IncidenciaScreen(
             Etiqueta("Alumno (matrícula)")
             OutlinedTextField(
                 value = alumno, onValueChange = { alumno = it },
-                placeholder = { Text("19071726 — Nombre del alumno", fontSize = 13.sp) },
+                placeholder = { Text("Ej: 19036816 — Nombre del alumno", fontSize = 13.sp) },
                 singleLine = true, modifier = Modifier.fillMaxWidth(), colors = camposColores()
             )
 
@@ -148,7 +148,7 @@ fun IncidenciaScreen(
                 minLines = 3, modifier = Modifier.fillMaxWidth(), colors = camposColores()
             )
 
-            Etiqueta("Adjuntar evidencia (foto)", Modifier.padding(top = 12.dp))
+            Etiqueta("Adjuntar evidencia (opcional)", Modifier.padding(top = 12.dp))
             Box {
                 Row(
                     Modifier.fillMaxWidth().height(52.dp)
