@@ -52,6 +52,9 @@ fun parsearFecha(s: String): Date? = try {
 
 fun formatearFecha(d: Date): String = SimpleDateFormat("dd/MM/yyyy", Locale.US).format(d)
 
+fun formatearFechaHora(d: Date): String =
+    SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(d)
+
 fun primerDiaDelMes(): String {
     val c = Calendar.getInstance().apply { set(Calendar.DAY_OF_MONTH, 1) }
     return formatearFecha(c.time)
@@ -76,9 +79,19 @@ fun resumirPorTipo(lista: List<Incidencia>): List<ResumenTipo> =
 
 /** Incidencias entre dos fechas (ambas incluidas), opcionalmente de un solo tipo. */
 fun filtrarIncidencias(lista: List<Incidencia>, desde: Date, hasta: Date, tipo: String?): List<Incidencia> =
-    lista.filter {
-        !it.fecha.before(desde) && !it.fecha.after(hasta) && (tipo == null || it.tipo == tipo)
-    }.sortedBy { it.fecha }
+    run {
+        // El formulario recibe fechas sin hora; incluye todo el día final.
+        val finDelDia = Calendar.getInstance().apply {
+            time = hasta
+            set(Calendar.HOUR_OF_DAY, 23)
+            set(Calendar.MINUTE, 59)
+            set(Calendar.SECOND, 59)
+            set(Calendar.MILLISECOND, 999)
+        }.time
+        lista.filter {
+            !it.fecha.before(desde) && !it.fecha.after(finDelDia) && (tipo == null || it.tipo == tipo)
+        }.sortedBy { it.fecha }
+    }
 
 /* ---------------- Acceso a datos ----------------
  * Hoy: todo vive en memoria (se reinicia al cerrar la app).
@@ -86,7 +99,7 @@ fun filtrarIncidencias(lista: List<Incidencia>, desde: Date, hasta: Date, tipo: 
  * y cambia UNA línea en `Servicios` para usarla. */
 interface IncidenciasRepository {
     suspend fun buscarAlumno(texto: String): Alumno?
-    suspend fun registrar(alumno: Alumno, tipo: String, gravedad: String, fecha: Date, descripcion: String, foto: Uri): Boolean
+    suspend fun registrar(alumno: Alumno, tipo: String, gravedad: String, fecha: Date, descripcion: String, foto: Uri?): Boolean
     suspend fun listarIncidencias(): List<Incidencia>
 
     /** Número que sube cada vez que se registra una incidencia nueva.
@@ -123,16 +136,21 @@ class FakeIncidenciasRepository : IncidenciasRepository {
     override suspend fun buscarAlumno(texto: String): Alumno? {
         delay(400)
         val t = normalizar(texto)
-        val numeros = Regex("\\d+").findAll(t).map { it.value }.toList()
-        val palabras = Regex("\\p{L}+").findAll(t).map { it.value }.toList()
-        if (numeros.isEmpty() && palabras.size < 2) return null   // nombre incompleto
-        return AlmacenLocal.alumnos.firstOrNull { a ->
-            val palabrasAlumno = Regex("\\p{L}+").findAll(normalizar(a.nombre)).map { it.value }.toSet()
-            (numeros.isEmpty() || numeros == listOf(a.matricula)) && palabras.all { it in palabrasAlumno }
+        val tokens = Regex("[\\p{L}\\p{N}]+").findAll(t).map { it.value }.toList()
+        val matricula = tokens.firstOrNull { token ->
+            AlmacenLocal.alumnos.any { normalizar(it.matricula) == token }
         }
+        val palabras = tokens.filter { it != matricula && it.any(Char::isLetter) }
+        if (matricula == null && palabras.size < 2) return null // nombre incompleto o matrícula desconocida
+
+        val coincidencias = AlmacenLocal.alumnos.filter { a ->
+            val palabrasAlumno = Regex("\\p{L}+").findAll(normalizar(a.nombre)).map { it.value }.toSet()
+            (matricula == null || normalizar(a.matricula) == matricula) && palabras.all { it in palabrasAlumno }
+        }
+        return coincidencias.singleOrNull() // nunca asignar silenciosamente al primer alumno coincidente
     }
 
-    override suspend fun registrar(alumno: Alumno, tipo: String, gravedad: String, fecha: Date, descripcion: String, foto: Uri): Boolean {
+    override suspend fun registrar(alumno: Alumno, tipo: String, gravedad: String, fecha: Date, descripcion: String, foto: Uri?): Boolean {
         delay(400)
         AlmacenLocal.agregar(alumno, tipo, gravedad, fecha, descripcion)   // aquí iría el guardado en la base y el aviso al tutor
         return true

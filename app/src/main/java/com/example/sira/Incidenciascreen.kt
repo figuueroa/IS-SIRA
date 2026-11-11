@@ -6,6 +6,8 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.media.ExifInterface
 import android.net.Uri
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -36,13 +38,18 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
+import java.util.Locale
 import kotlin.math.max
 
 /* ---------------- Estado ---------------- */
@@ -50,7 +57,9 @@ sealed interface EstadoIncidencia {
     data object Inactivo : EstadoIncidencia
     data object Cargando : EstadoIncidencia
     data object Exito : EstadoIncidencia
-    data object Error : EstadoIncidencia
+    data object ErrorValidacion : EstadoIncidencia
+    data object AlumnoNoEncontrado : EstadoIncidencia
+    data object ErrorRegistro : EstadoIncidencia
 }
 
 class IncidenciaViewModel(
@@ -59,22 +68,37 @@ class IncidenciaViewModel(
     private val _estado = MutableStateFlow<EstadoIncidencia>(EstadoIncidencia.Inactivo)
     val estado: StateFlow<EstadoIncidencia> = _estado.asStateFlow()
 
-    fun registrar(alumnoTexto: String, tipo: String, gravedad: String, fecha: String, descripcion: String, foto: Uri?) {
-        val fechaDate = parsearFecha(fecha)
-        if (alumnoTexto.isBlank() || tipo.isEmpty() || gravedad.isEmpty() || fechaDate == null || foto == null) {
-            _estado.value = EstadoIncidencia.Error; return
+    fun registrar(alumnoTexto: String, tipo: String, gravedad: String, fecha: Date, descripcion: String, foto: Uri?) {
+        if (_estado.value == EstadoIncidencia.Cargando || _estado.value == EstadoIncidencia.Exito) return
+        if (alumnoTexto.isBlank() || tipo.isEmpty() || gravedad.isEmpty() || fecha.after(Date())) {
+            _estado.value = EstadoIncidencia.ErrorValidacion
+            return
         }
+        _estado.value = EstadoIncidencia.Cargando
         viewModelScope.launch {
-            _estado.value = EstadoIncidencia.Cargando
-            val ok = try {
+            val resultado = try {
                 val alumno = repo.buscarAlumno(alumnoTexto)
-                alumno != null && repo.registrar(alumno, tipo, gravedad, fechaDate, descripcion.trim(), foto)
-            } catch (e: Exception) { false }
-            _estado.value = if (ok) EstadoIncidencia.Exito else EstadoIncidencia.Error
+                when {
+                    alumno == null -> EstadoIncidencia.AlumnoNoEncontrado
+                    repo.registrar(alumno, tipo, gravedad, fecha, descripcion.trim(), foto) -> EstadoIncidencia.Exito
+                    else -> EstadoIncidencia.ErrorRegistro
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                EstadoIncidencia.ErrorRegistro
+            }
+            _estado.value = resultado
         }
     }
 
     fun reiniciar() { _estado.value = EstadoIncidencia.Inactivo }
+
+    fun mostrarErrorRegistro() {
+        if (_estado.value != EstadoIncidencia.Cargando && _estado.value != EstadoIncidencia.Exito) {
+            _estado.value = EstadoIncidencia.ErrorRegistro
+        }
+    }
 }
 
 /* ---------------- Pantalla ---------------- */
@@ -90,17 +114,39 @@ fun IncidenciaScreen(
     var alumno by rememberSaveable { mutableStateOf("") }
     var tipo by rememberSaveable { mutableStateOf("") }
     var gravedad by rememberSaveable { mutableStateOf("") }
-    var fecha by rememberSaveable { mutableStateOf(formatearFecha(Date())) }
+    var fechaHoraMillis by rememberSaveable { mutableLongStateOf(System.currentTimeMillis()) }
     var descripcion by rememberSaveable { mutableStateOf("") }
     var foto by rememberSaveable { mutableStateOf<Uri?>(null) }
     var fotoPendiente by rememberSaveable { mutableStateOf<Uri?>(null) }
+    var archivoFotoPendiente by remember { mutableStateOf<File?>(null) }
     var menuFoto by remember { mutableStateOf(false) }
+    val fechaHora = Date(fechaHoraMillis)
+
+    LaunchedEffect(estado) {
+        if (estado == EstadoIncidencia.Exito) {
+            alumno = ""
+            tipo = ""
+            gravedad = ""
+            fechaHoraMillis = System.currentTimeMillis()
+            descripcion = ""
+            foto = null
+            delay(1800)
+            vm.reiniciar()
+        }
+    }
 
     val galeria = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) foto = uri
+        if (uri != null) { foto = uri; vm.reiniciar() }
     }
     val camara = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { tomada ->
-        if (tomada) foto = fotoPendiente
+        if (tomada) {
+            foto = fotoPendiente
+            vm.reiniciar()
+        } else {
+            archivoFotoPendiente?.delete()
+        }
+        archivoFotoPendiente = null
+        fotoPendiente = null
     }
     val miniatura by produceState<Bitmap?>(null, foto) {
         value = foto?.let { uri -> withContext(Dispatchers.IO) { cargarMiniatura(context, uri) } }
@@ -118,7 +164,7 @@ fun IncidenciaScreen(
         Tarjeta {
             Etiqueta("Alumno (matrícula)")
             OutlinedTextField(
-                value = alumno, onValueChange = { alumno = it },
+                value = alumno, onValueChange = { alumno = it; vm.reiniciar() },
                 placeholder = { Text("19071726 — Nombre del alumno", fontSize = 13.sp) },
                 singleLine = true, modifier = Modifier.fillMaxWidth(), colors = camposColores()
             )
@@ -126,29 +172,65 @@ fun IncidenciaScreen(
             Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Column(Modifier.weight(1f)) {
                     Etiqueta("Tipo de incidencia")
-                    Selector(tipo, TiposIncidencia, { tipo = it })
+                    Selector(tipo, TiposIncidencia, { tipo = it; vm.reiniciar() })
                 }
                 Column(Modifier.weight(1f)) {
                     Etiqueta("Gravedad")
-                    Selector(gravedad, Gravedades, { gravedad = it })
+                    Selector(gravedad, Gravedades, { gravedad = it; vm.reiniciar() })
                 }
             }
 
-            Etiqueta("Fecha", Modifier.padding(top = 12.dp))
-            OutlinedTextField(
-                value = fecha, onValueChange = { fecha = it },
-                placeholder = { Text("dd/mm/aaaa") },
-                singleLine = true, modifier = Modifier.fillMaxWidth(), colors = camposColores()
-            )
+            Etiqueta("Fecha y hora del incidente", Modifier.padding(top = 12.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = formatearFecha(fechaHora), onValueChange = {}, readOnly = true,
+                    label = { Text("Fecha") }, singleLine = true,
+                    modifier = Modifier.weight(1.2f).clickable {
+                        val actual = Calendar.getInstance().apply { time = fechaHora }
+                        DatePickerDialog(
+                            context,
+                            { _, year, month, day ->
+                                actual.set(Calendar.YEAR, year)
+                                actual.set(Calendar.MONTH, month)
+                                actual.set(Calendar.DAY_OF_MONTH, day)
+                                fechaHoraMillis = actual.timeInMillis
+                                vm.reiniciar()
+                            },
+                            actual.get(Calendar.YEAR), actual.get(Calendar.MONTH), actual.get(Calendar.DAY_OF_MONTH)
+                        ).apply { datePicker.maxDate = System.currentTimeMillis() }.show()
+                    },
+                    colors = camposColores()
+                )
+                OutlinedTextField(
+                    value = SimpleDateFormat("HH:mm", Locale.getDefault()).format(fechaHora),
+                    onValueChange = {}, readOnly = true, label = { Text("Hora") }, singleLine = true,
+                    modifier = Modifier.weight(0.8f).clickable {
+                        val actual = Calendar.getInstance().apply { time = fechaHora }
+                        TimePickerDialog(
+                            context,
+                            { _, hour, minute ->
+                                actual.set(Calendar.HOUR_OF_DAY, hour)
+                                actual.set(Calendar.MINUTE, minute)
+                                actual.set(Calendar.SECOND, 0)
+                                actual.set(Calendar.MILLISECOND, 0)
+                                fechaHoraMillis = actual.timeInMillis
+                                vm.reiniciar()
+                            },
+                            actual.get(Calendar.HOUR_OF_DAY), actual.get(Calendar.MINUTE), true
+                        ).show()
+                    },
+                    colors = camposColores()
+                )
+            }
 
             Etiqueta("Descripción", Modifier.padding(top = 12.dp))
             OutlinedTextField(
-                value = descripcion, onValueChange = { descripcion = it },
+                value = descripcion, onValueChange = { descripcion = it; vm.reiniciar() },
                 placeholder = { Text("Describa lo ocurrido", fontSize = 13.sp) },
                 minLines = 3, modifier = Modifier.fillMaxWidth(), colors = camposColores()
             )
 
-            Etiqueta("Adjuntar evidencia (foto)", Modifier.padding(top = 12.dp))
+            Etiqueta("Adjuntar evidencia (opcional)", Modifier.padding(top = 12.dp))
             Box {
                 Row(
                     Modifier.fillMaxWidth().height(52.dp)
@@ -160,10 +242,18 @@ fun IncidenciaScreen(
                 DropdownMenu(expanded = menuFoto, onDismissRequest = { menuFoto = false }) {
                     DropdownMenuItem(text = { Text("Tomar foto") }, onClick = {
                         menuFoto = false
-                        val archivo = File(File(context.cacheDir, "fotos").apply { mkdirs() }, "inc_${System.currentTimeMillis()}.jpg")
-                        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", archivo)
-                        fotoPendiente = uri
-                        camara.launch(uri)
+                        try {
+                            val archivo = File(File(context.cacheDir, "fotos").apply { mkdirs() }, "inc_${System.currentTimeMillis()}.jpg")
+                            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", archivo)
+                            archivoFotoPendiente = archivo
+                            fotoPendiente = uri
+                            camara.launch(uri)
+                        } catch (e: Exception) {
+                            archivoFotoPendiente?.delete()
+                            archivoFotoPendiente = null
+                            fotoPendiente = null
+                            vm.mostrarErrorRegistro()
+                        }
                     })
                     DropdownMenuItem(text = { Text("Elegir de la galería") }, onClick = {
                         menuFoto = false
@@ -185,21 +275,21 @@ fun IncidenciaScreen(
                                 contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                         }
                     }
-                    TextButton(onClick = { foto = null }) { Text("Quitar foto", color = ErrTexto) }
+                    TextButton(onClick = { foto = null; vm.reiniciar() }) { Text("Quitar foto", color = ErrTexto) }
                 }
             }
 
             Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
-                    onClick = { vm.registrar(alumno, tipo, gravedad, fecha, descripcion, foto) },
-                    enabled = estado != EstadoIncidencia.Cargando,
+                    onClick = { vm.registrar(alumno, tipo, gravedad, fechaHora, descripcion, foto) },
+                    enabled = estado != EstadoIncidencia.Cargando && estado != EstadoIncidencia.Exito,
                     shape = RoundedCornerShape(4.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Azul, contentColor = Color.White),
                     modifier = Modifier.weight(1f).height(48.dp)
                 ) { Text("Registrar incidencia", fontWeight = FontWeight.Bold, fontSize = 13.sp, textAlign = TextAlign.Center) }
                 OutlinedButton(
                     onClick = {
-                        alumno = ""; tipo = ""; gravedad = ""; fecha = formatearFecha(Date()); descripcion = ""; foto = null
+                        alumno = ""; tipo = ""; gravedad = ""; fechaHoraMillis = System.currentTimeMillis(); descripcion = ""; foto = null
                         vm.reiniciar()
                     },
                     shape = RoundedCornerShape(4.dp),
@@ -210,8 +300,10 @@ fun IncidenciaScreen(
             }
 
             when (estado) {
-                EstadoIncidencia.Exito -> Mensaje("Incidencia registrada con éxito. Se notificó al tutor.", OkFondo, OkBorde, OkTexto)
-                EstadoIncidencia.Error -> Mensaje("Formato de datos o captura de foto inválida.", ErrFondo, ErrBorde, ErrTexto)
+                EstadoIncidencia.Exito -> Mensaje("Incidencia registrada con éxito.", OkFondo, OkBorde, OkTexto)
+                EstadoIncidencia.ErrorValidacion -> Mensaje("Revisa los datos y asegúrate de que la fecha no sea futura.", ErrFondo, ErrBorde, ErrTexto)
+                EstadoIncidencia.AlumnoNoEncontrado -> Mensaje("No se encontró un alumno único con esos datos.", ErrFondo, ErrBorde, ErrTexto)
+                EstadoIncidencia.ErrorRegistro -> Mensaje("No se pudo registrar la incidencia. Intenta de nuevo.", ErrFondo, ErrBorde, ErrTexto)
                 else -> {}
             }
         }

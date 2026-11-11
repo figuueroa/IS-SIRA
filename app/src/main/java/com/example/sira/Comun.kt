@@ -100,7 +100,8 @@ internal fun Selector(valor: String, opciones: List<String>, onElegir: (String) 
 
 /* ---------------- Estructura común: barra superior + menú de tres rayas ---------------- */
 enum class Seccion(val titulo: String) {
-    Panel("Panel"), Incidencias("Incidencias"), Reportes("Reportes")
+    Panel("Panel"), Incidencias("Incidencias"), Reportes("Reportes"), HistorialMedico("Historial médico"),
+    RegistroExpediente("Registro médico")
 }
 
 @Composable
@@ -120,7 +121,7 @@ internal fun SiraScaffold(
             ModalDrawerSheet {
                 Text("SIRA", color = Azul, fontWeight = FontWeight.Bold, fontSize = 20.sp,
                     modifier = Modifier.padding(horizontal = 28.dp, vertical = 20.dp))
-                Seccion.values().forEach { s ->
+                Seccion.entries.forEach { s ->
                     ItemMenu(s.titulo, seleccionado = s == seccion, habilitado = true) {
                         scope.launch { drawerState.close() }
                         if (s != seccion) onNavegar(s)
