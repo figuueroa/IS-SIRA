@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -38,12 +39,24 @@ import kotlinx.coroutines.launch
  * La contraseña debe compararse cifrada en el servidor, nunca en la app. */
 interface AuthRepository {
     suspend fun iniciarSesion(correo: String, clave: String): Boolean
+
+    /** Pide al servidor que envíe el enlace de restablecimiento (RF-21 / HU-22).
+     *  Debe responder true exista o no el correo (así no se pueden descubrir cuentas).
+     *  Devuelve false o lanza excepción solo si no se pudo contactar al servidor. */
+    suspend fun solicitarRecuperacion(correo: String): Boolean
 }
 
 class FakeAuthRepository : AuthRepository {
     override suspend fun iniciarSesion(correo: String, clave: String): Boolean {
         delay(600) // simula la red
         return correo.equals("admin@institucion.edu.mx", ignoreCase = true) && clave == "Sira1234"
+    }
+
+    override suspend fun solicitarRecuperacion(correo: String): Boolean {
+        delay(800) // simula la red
+        // Para probar el estado de error sin conexión: escribe un correo que empiece con "sinred".
+        if (correo.startsWith("sinred", ignoreCase = true)) throw java.io.IOException("Sin conexión simulada")
+        return true
     }
 }
 
@@ -76,7 +89,7 @@ class LoginViewModel(
 
 /* ---------------- Pantalla ---------------- */
 @Composable
-fun LoginScreen(vm: LoginViewModel = viewModel(), onExito: () -> Unit = {}) {
+fun LoginScreen(vm: LoginViewModel = viewModel(), onExito: () -> Unit = {}, onOlvido: () -> Unit = {}) {
     val estado by vm.estado.collectAsStateWithLifecycle()
     LaunchedEffect(estado) {
         if (estado == EstadoLogin.Exito) {
@@ -130,8 +143,9 @@ fun LoginScreen(vm: LoginViewModel = viewModel(), onExito: () -> Unit = {}) {
                 )
 
                 Text("¿Olvidó su contraseña?", color = Azul, fontSize = 12.sp, textAlign = TextAlign.End,
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp)
-                        .clickable { /* pendiente: pantalla I-02 Recuperar contraseña */ })
+                    modifier = Modifier.fillMaxWidth()
+                        .clickable(role = Role.Button, onClick = onOlvido)   // abre I-02 Recuperar contraseña
+                        .padding(top = 14.dp, bottom = 18.dp))               // área táctil ≈ 48 dp
 
                 Button(
                     onClick = { vm.ingresar(correo, clave) },
