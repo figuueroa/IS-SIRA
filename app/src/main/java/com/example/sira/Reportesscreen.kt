@@ -159,7 +159,7 @@ fun ReportesScreen(onNavegar: (Seccion) -> Unit, onCerrarSesion: () -> Unit) {
                     Text(inc.alumno.nombre, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     Text("Matrícula ${inc.alumno.matricula}", fontSize = 12.sp, color = Gris)
                     Text(
-                        "${formatearFecha(inc.fecha)} · ${inc.tipo} · Gravedad ${inc.gravedad.lowercase()}",
+                        "${formatearFechaHora(inc.fecha)} · ${inc.tipo} · Gravedad ${inc.gravedad.lowercase()}",
                         fontSize = 12.sp,
                         color = if (inc.gravedad == "Fuerte") ErrTexto else Color(0xFF222222)
                     )
@@ -232,9 +232,9 @@ private fun compartirArchivo(context: Context, archivo: File, formato: String) {
 
 private fun escribirCsv(archivo: File, filas: List<Incidencia>) {
     fun celda(s: String) = "\"" + s.replace("\"", "\"\"") + "\""
-    val sb = StringBuilder("﻿Fecha,Matrícula,Alumno,Tipo,Gravedad\n")
+    val sb = StringBuilder("Fecha y hora,Matrícula,Alumno,Tipo,Gravedad\n")
     filas.forEach {
-        sb.append(listOf(formatearFecha(it.fecha), it.alumno.matricula, it.alumno.nombre, it.tipo, it.gravedad)
+        sb.append(listOf(formatearFechaHora(it.fecha), it.alumno.matricula, it.alumno.nombre, it.tipo, it.gravedad)
             .joinToString(",") { c -> celda(c) }).append('\n')
     }
     archivo.writeText(sb.toString(), Charsets.UTF_8)
@@ -255,9 +255,9 @@ private fun lineasReporte(filas: List<Incidencia>, desde: String, hasta: String,
     l += fila("TOTAL", resumen.sumOf { it.total }, resumen.sumOf { it.baja }, resumen.sumOf { it.media }, resumen.sumOf { it.fuerte }) to false
     l += "" to false
     l += "Detalle de incidencias (${filas.size})" to true
-    l += "Fecha".padEnd(12) + "Matricula".padEnd(11) + "Alumno".padEnd(36) + "Tipo".padEnd(38) + "Gravedad" to false
+    l += "Fecha y hora".padEnd(18) + "Matricula".padEnd(11) + "Alumno".padEnd(36) + "Tipo".padEnd(38) + "Gravedad" to false
     filas.forEach {
-        l += formatearFecha(it.fecha).padEnd(12) + it.alumno.matricula.padEnd(11) +
+        l += formatearFechaHora(it.fecha).padEnd(18) + it.alumno.matricula.padEnd(11) +
                 it.alumno.nombre.take(34).padEnd(36) + it.tipo.take(36).padEnd(38) + it.gravedad to false
     }
     return l

@@ -12,6 +12,7 @@ import androidx.compose.runtime.setValue
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        ServiciosExpedientes.inicializar(applicationContext)
         setContent {
             MaterialTheme {
                 var sesionIniciada by rememberSaveable { mutableStateOf(false) }
@@ -35,6 +36,8 @@ class MainActivity : ComponentActivity() {
                         Seccion.Panel -> PanelScreen(onNavegar = { seccion = it }, onCerrarSesion = cerrarSesion)
                         Seccion.Incidencias -> IncidenciaScreen(onNavegar = { seccion = it }, onCerrarSesion = cerrarSesion)
                         Seccion.Reportes -> ReportesScreen(onNavegar = { seccion = it }, onCerrarSesion = cerrarSesion)
+                        Seccion.HistorialMedico -> HistorialMedicoScreen(onNavegar = { seccion = it }, onCerrarSesion = cerrarSesion)
+                        Seccion.RegistroExpediente -> RegistrarExpedienteScreen(onNavegar = { seccion = it }, onCerrarSesion = cerrarSesion)
                     }
                 }
             }
