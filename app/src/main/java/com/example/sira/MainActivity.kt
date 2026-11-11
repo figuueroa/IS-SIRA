@@ -16,10 +16,19 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 var sesionIniciada by rememberSaveable { mutableStateOf(false) }
                 var seccion by rememberSaveable { mutableStateOf(Seccion.Panel) }
+                var recuperando by rememberSaveable { mutableStateOf(false) }
 
                 if (!sesionIniciada) {
-                    // Después de iniciar sesión se entra al Panel.
-                    LoginScreen(onExito = { seccion = Seccion.Panel; sesionIniciada = true })
+                    if (recuperando) {
+                        // I-02 Recuperar contraseña (también responde al botón Atrás del sistema).
+                        RecuperarScreen(onVolver = { recuperando = false })
+                    } else {
+                        // Después de iniciar sesión se entra al Panel.
+                        LoginScreen(
+                            onExito = { seccion = Seccion.Panel; sesionIniciada = true },
+                            onOlvido = { recuperando = true }
+                        )
+                    }
                 } else {
                     val cerrarSesion = { sesionIniciada = false }
                     when (seccion) {
