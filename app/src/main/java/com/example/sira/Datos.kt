@@ -46,6 +46,8 @@ sealed interface ResultadoRegistroUsuario {
 interface UsuariosRepository {
     suspend fun listar(): List<UsuarioDemo>
     suspend fun registrar(usuario: UsuarioDemo): ResultadoRegistroUsuario
+    /** Cambia el rol de un perfil ya registrado. Devuelve false si el correo no existe. */
+    suspend fun cambiarRol(correo: String, rol: RolDemo): Boolean
 }
 
 object ServiciosUsuarios {
@@ -64,6 +66,41 @@ private class FakeUsuariosRepository : UsuariosRepository {
         }
         usuarios += usuario.copy(correo = usuario.correo.trim().lowercase())
         ResultadoRegistroUsuario.Exito
+    }
+
+    override suspend fun cambiarRol(correo: String, rol: RolDemo): Boolean = mutex.withLock {
+        val i = usuarios.indexOfFirst { it.correo.equals(correo.trim(), ignoreCase = true) }
+        if (i < 0) return@withLock false
+        usuarios[i] = usuarios[i].copy(rol = rol)
+        true
+    }
+}
+
+/* ---------------- Respaldos (I-14) ----------------
+ * Hoy: la lista vive en memoria y "generar" solo agrega un registro (no crea archivo real).
+ * Después: una clase que pida el respaldo al servidor/base de datos. */
+data class Respaldo(val archivo: String, val fecha: Date, val correcto: Boolean = true)
+
+interface RespaldosRepository {
+    /** Del más reciente al más antiguo. */
+    suspend fun listar(): List<Respaldo>
+    suspend fun generar(): Respaldo
+}
+
+object ServiciosRespaldos {
+    val repositorio: RespaldosRepository = FakeRespaldosRepository()
+}
+
+private class FakeRespaldosRepository : RespaldosRepository {
+    private val mutex = kotlinx.coroutines.sync.Mutex()
+    private val respaldos = mutableListOf<Respaldo>()
+
+    override suspend fun listar(): List<Respaldo> = mutex.withLock { respaldos.asReversed().toList() }
+
+    override suspend fun generar(): Respaldo = mutex.withLock {
+        val ahora = Date()
+        val nombre = "sira_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(ahora) + ".bak"
+        Respaldo(nombre, ahora).also { respaldos += it }
     }
 }
 
@@ -250,12 +287,12 @@ private object AlmacenLocal {
 }
 
 internal val alumnosPrueba = listOf(
-        Alumno("19071726", "Bañuelos Martinez Jesus Rogelio"),
-        Alumno("19071801", "Ramirez Lopez Ana Sofia"),
-        Alumno("19071845", "Hernandez Garcia Carlos Daniel"),
-        Alumno("19071902", "Torres Mendoza Maria Fernanda"),
-        Alumno(matricula= "00000000", nombre = "ajo")
-    )
+    Alumno("19071726", "Bañuelos Martinez Jesus Rogelio"),
+    Alumno("19071801", "Ramirez Lopez Ana Sofia"),
+    Alumno("19071845", "Hernandez Garcia Carlos Daniel"),
+    Alumno("19071902", "Torres Mendoza Maria Fernanda"),
+    Alumno(matricula= "00000000", nombre = "ajo")
+)
 
 class FakeIncidenciasRepository : IncidenciasRepository {
 

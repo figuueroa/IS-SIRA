@@ -67,6 +67,8 @@ class MainActivity : ComponentActivity() {
                         Seccion.GestionTutores -> GestionTutoresScreen(onNavegar = navegar, onCerrarSesion = cerrarSesion)
                         Seccion.GestionUsuarios -> GestionUsuariosScreen(onNavegar = navegar, onCerrarSesion = cerrarSesion)
                         Seccion.Bitacora -> BitacoraScreen(onNavegar = navegar, onCerrarSesion = cerrarSesion)
+                        Seccion.RolesPermisos -> RolesPermisosScreen(onNavegar = navegar, onCerrarSesion = cerrarSesion)
+                        Seccion.Respaldos -> RespaldosScreen(onNavegar = navegar, onCerrarSesion = cerrarSesion)
                         Seccion.Notificaciones -> NotificacionesScreen(
                             onNavegar = navegar,
                             onCerrarSesion = cerrarSesion,

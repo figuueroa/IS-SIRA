@@ -102,17 +102,19 @@ internal fun Selector(valor: String, opciones: List<String>, onElegir: (String) 
 enum class Seccion(val titulo: String) {
     Panel("Panel"), Incidencias("Incidencias"), ConsultaIncidencias("Consulta de incidencias"), Reportes("Reportes"), HistorialMedico("Historial médico"),
     RegistroExpediente("Registro médico"), GestionTutores("Registro de tutores"), GestionUsuarios("Registro de usuarios"),
-    Bitacora("Bitácora"), Notificaciones("Notificaciones"), TutorIncidencias("Mis hijos e incidencias")
+    Bitacora("Bitácora"), Notificaciones("Notificaciones"), TutorIncidencias("Mis hijos e incidencias"),
+    RolesPermisos("Roles y permisos"), Respaldos("Respaldos")
 }
 
 /** Reglas de navegación de la demo, en espera de RBAC validado por el backend. */
 internal fun Seccion.permitidaPara(rol: RolDemo): Boolean = when (rol) {
     RolDemo.Administrador -> this == Seccion.GestionUsuarios || this == Seccion.GestionTutores ||
-        this == Seccion.Bitacora || this == Seccion.ConsultaIncidencias
+            this == Seccion.Bitacora || this == Seccion.ConsultaIncidencias ||
+            this == Seccion.RolesPermisos || this == Seccion.Respaldos
     RolDemo.Director -> this == Seccion.Panel || this == Seccion.Incidencias || this == Seccion.ConsultaIncidencias ||
-        this == Seccion.Reportes || this == Seccion.Notificaciones
+            this == Seccion.Reportes || this == Seccion.Notificaciones
     RolDemo.Enfermeria -> this == Seccion.Panel || this == Seccion.HistorialMedico || this == Seccion.RegistroExpediente ||
-        this == Seccion.Incidencias || this == Seccion.Reportes || this == Seccion.Notificaciones
+            this == Seccion.Incidencias || this == Seccion.Reportes || this == Seccion.Notificaciones
     RolDemo.Tutor -> this == Seccion.TutorIncidencias || this == Seccion.Notificaciones
 }
 

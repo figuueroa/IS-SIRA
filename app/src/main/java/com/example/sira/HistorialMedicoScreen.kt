@@ -322,6 +322,9 @@ fun HistorialMedicoScreen(
                 if (estadoActualizacion == EstadoActualizacionExpediente.Exito) {
                     Mensaje("Expediente actualizado.", OkFondo, OkBorde, OkTexto)
                 }
+
+                // I-04: registro de ingresos a enfermería y su historial.
+                IngresosMedicos(alumno)
             }
         }
     }
