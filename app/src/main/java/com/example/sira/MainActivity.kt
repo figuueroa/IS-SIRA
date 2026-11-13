@@ -15,6 +15,7 @@ class MainActivity : ComponentActivity() {
         ServiciosExpedientes.inicializar(applicationContext)
         setContent {
             MaterialTheme {
+                var bienvenida by rememberSaveable { mutableStateOf(true) }   // solo al abrir la app
                 var sesionIniciada by rememberSaveable { mutableStateOf(false) }
                 var seccion by rememberSaveable { mutableStateOf(Seccion.Panel) }
                 var recuperando by rememberSaveable { mutableStateOf(false) }
@@ -23,7 +24,9 @@ class MainActivity : ComponentActivity() {
                 var correoSesion by rememberSaveable { mutableStateOf("") }
                 val rolActual = RolDemo.entries.firstOrNull { it.name == rolNombre } ?: RolDemo.Director
 
-                if (!sesionIniciada) {
+                if (bienvenida) {
+                    BienvenidaScreen(onContinuar = { bienvenida = false })
+                } else if (!sesionIniciada) {
                     if (probarNuevaPassword) {
                         NuevaPasswordScreen(onVolver = { probarNuevaPassword = false })
                     } else if (recuperando) {

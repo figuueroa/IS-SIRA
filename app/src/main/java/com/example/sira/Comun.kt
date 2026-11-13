@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -13,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -34,19 +36,26 @@ internal val ErrFondo = Color(0xFFFDEAEA); internal val ErrBorde = Color(0xFFD95
 
 /* ---------------- LOGO (se cambia aquí, en un solo lugar) ----------------
  * 1) Copia tu imagen a app/src/main/res/drawable/   2) Cambia el nombre en LogoImagen.
- * Tamaño: misma altura que el texto "SIRA" y la mitad de su ancho. */
-internal val LogoAlto = 16.dp
-internal val LogoAncho = 23.dp
-internal val LogoImagen = R.drawable.logo_sira
+ * El logo nuevo tiene los mismos colores que la barra azul, así que va dentro de un círculo blanco.
+ * Para quitarlo, pon LogoConInsignia = false (y baja LogoTamano si quieres). */
+internal val LogoImagen = R.drawable.logo_sira_sin_fondo
+internal val LogoConInsignia = true
+internal val LogoTamano = 32.dp
 
 @Composable
 internal fun LogoSira() {
-    Image(
-        painter = painterResource(LogoImagen),
-        contentDescription = "Logo",
-        contentScale = ContentScale.Fit,
-        modifier = Modifier.size(LogoAncho, LogoAlto)
-    )
+    Box(
+        Modifier.size(LogoTamano)
+            .then(if (LogoConInsignia) Modifier.clip(CircleShape).background(Color.White).padding(4.dp) else Modifier),
+        contentAlignment = Alignment.Center
+    ) {
+        Image(
+            painter = painterResource(LogoImagen),
+            contentDescription = "Logo SIRA",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize()
+        )
+    }
 }
 
 /* ---------------- Componentes de formulario ---------------- */
