@@ -109,7 +109,10 @@ object ServiciosExpedientes {
     fun inicializar(context: Context) {
         if (instancia != null) return
         synchronized(this) {
-            if (instancia == null) {
+            if (instancia == null && BuildConfig.USAR_SERVIDOR) {
+                // Los expedientes viven en SQL Server (dbo.MedicalRecords); no se guardan en el teléfono.
+                instancia = ApiExpedienteMedicoRepository()
+            } else if (instancia == null) {
                 System.loadLibrary("sqlcipher")
                 val appContext = context.applicationContext
                 val factory = SupportOpenHelperFactory(ClaveBaseDatos.obtener(appContext))

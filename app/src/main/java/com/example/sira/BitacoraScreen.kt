@@ -83,7 +83,8 @@ fun BitacoraScreen(
         Text("BITÁCORA DE INCIDENCIAS · VISTA LOCAL", color = Gris, fontSize = 12.sp, letterSpacing = 1.sp,
             modifier = Modifier.padding(bottom = 10.dp))
         Mensaje(
-            "Eventos disponibles solo durante esta ejecución. El usuario responsable no se identifica y el registro no se conserva al cerrar la app.",
+            if (BuildConfig.USAR_SERVIDOR) "Bitácora del servidor (dbo.AuditEvents): no se puede editar ni borrar."
+            else "Eventos disponibles solo durante esta ejecución. El usuario responsable no se identifica y el registro no se conserva al cerrar la app.",
             FondoTarjeta, BordeTarjeta, Gris
         )
 
@@ -115,7 +116,7 @@ fun BitacoraScreen(
             }
             is EstadoBitacora.Listo -> when {
                 actual.eventos.isEmpty() -> Mensaje(
-                    "Aún no hay registros ni ediciones de incidencias en esta ejecución.", FondoTarjeta, BordeTarjeta, Gris
+                    "Aún no hay registros ni ediciones de incidencias.", FondoTarjeta, BordeTarjeta, Gris
                 )
                 filtrados.isEmpty() -> Mensaje("No hay eventos que coincidan con estos filtros.", FondoTarjeta, BordeTarjeta, Gris)
                 else -> {
@@ -127,7 +128,7 @@ fun BitacoraScreen(
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically) {
                                 Text(evento.accion, color = Azul, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                                Text("#${evento.incidenciaId}", color = Gris, fontSize = 13.sp)
+                                Text(evento.folio.ifBlank { "#${evento.incidenciaId}" }, color = Gris, fontSize = 13.sp)
                             }
                             Text(evento.alumno.nombre, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
                             Text("Matrícula ${evento.alumno.matricula}", color = Gris, fontSize = 13.sp)

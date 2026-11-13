@@ -4,6 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -23,6 +25,15 @@ class MainActivity : ComponentActivity() {
                 var rolNombre by rememberSaveable { mutableStateOf(RolDemo.Director.name) }
                 var correoSesion by rememberSaveable { mutableStateOf("") }
                 val rolActual = RolDemo.entries.firstOrNull { it.name == rolNombre } ?: RolDemo.Director
+
+                // Si el servidor rechaza la sesión (expiró, la revocaron o se reinició la app), vuelve al login.
+                val sesionExpirada by ApiCliente.sesionExpirada.collectAsState()
+                LaunchedEffect(sesionExpirada, sesionIniciada) {
+                    if (BuildConfig.USAR_SERVIDOR && sesionIniciada && (sesionExpirada || !ApiCliente.haySesion)) {
+                        sesionIniciada = false
+                        seccion = Seccion.Panel
+                    }
+                }
 
                 if (bienvenida) {
                     BienvenidaScreen(onContinuar = { bienvenida = false })
@@ -52,7 +63,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 } else {
-                    val cerrarSesion = { sesionIniciada = false; seccion = Seccion.Panel }
+                    val cerrarSesion = { ApiCliente.cerrarSesion(); sesionIniciada = false; seccion = Seccion.Panel }
                     val navegar: (Seccion) -> Unit = { destino ->
                         if (destino.permitidaPara(rolActual)) seccion = destino
                     }

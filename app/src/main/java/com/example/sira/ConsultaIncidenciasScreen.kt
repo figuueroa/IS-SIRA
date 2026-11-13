@@ -53,7 +53,7 @@ sealed interface EstadoConsultaIncidencias {
         val incidencias: List<Incidencia>,
         val actualizando: Boolean = false,
         val errorActualizacion: Boolean = false,
-        val eliminandoId: Int? = null,
+        val eliminandoId: String? = null,
         val errorEliminacion: Boolean = false
     ) : EstadoConsultaIncidencias
 }
@@ -102,13 +102,14 @@ class ConsultaIncidenciasViewModel(
         }
     }
 
-    fun eliminar(incidencia: Incidencia, alTerminar: (Boolean) -> Unit) {
+    fun eliminar(incidencia: Incidencia, motivo: String, alTerminar: (Boolean) -> Unit) {
+        if (motivo.isBlank()) return
         val anterior = _estado.value as? EstadoConsultaIncidencias.Listo ?: return
         if (anterior.actualizando || anterior.eliminandoId != null) return
         _estado.value = anterior.copy(eliminandoId = incidencia.id, errorEliminacion = false)
         viewModelScope.launch {
             val exito = try {
-                repo.eliminar(incidencia.id)
+                repo.eliminar(incidencia.id, motivo.trim())
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -246,7 +247,7 @@ fun ConsultaIncidenciasScreen(
             }
             is EstadoConsultaIncidencias.Listo -> when {
                 actual.incidencias.isEmpty() -> Mensaje(
-                    "Aún no hay incidencias registradas en este dispositivo.", FondoTarjeta, BordeTarjeta, Gris
+                    "Aún no hay incidencias registradas.", FondoTarjeta, BordeTarjeta, Gris
                 )
                 !rangoValido -> Unit
                 resultados.isEmpty() -> Mensaje(
@@ -304,7 +305,7 @@ fun ConsultaIncidenciasScreen(
                 eliminando = eliminando,
                 error = actual?.errorEliminacion == true,
                 onCancelar = { if (!eliminando) incidenciaEliminando = null },
-                onConfirmar = { vm.eliminar(incidencia) { ok -> if (ok) incidenciaEliminando = null } }
+                onConfirmar = { motivo -> vm.eliminar(incidencia, motivo) { ok -> if (ok) incidenciaEliminando = null } }
             )
         }
     }
@@ -316,8 +317,9 @@ private fun ConfirmarEliminarIncidencia(
     eliminando: Boolean,
     error: Boolean,
     onCancelar: () -> Unit,
-    onConfirmar: () -> Unit
+    onConfirmar: (motivo: String) -> Unit
 ) {
+    var motivo by remember(incidencia.id) { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onCancelar,
         title = { Text("Eliminar incidencia") },
@@ -328,14 +330,21 @@ private fun ConfirmarEliminarIncidencia(
                     color = Gris, modifier = Modifier.padding(top = 8.dp))
                 Text("${incidencia.tipo} · ${formatearFechaHora(incidencia.fecha)}",
                     color = Gris, modifier = Modifier.padding(top = 4.dp))
+                Etiqueta("Motivo de la eliminación (obligatorio)", Modifier.padding(top = 12.dp))
+                OutlinedTextField(
+                    value = motivo, onValueChange = { if (it.length <= 1000) motivo = it },
+                    placeholder = { Text("Ej. registro duplicado") },
+                    enabled = !eliminando, minLines = 2,
+                    colors = camposColores(), modifier = Modifier.fillMaxWidth()
+                )
                 if (error) Mensaje("No se pudo eliminar. Puede que el registro ya no exista; vuelve a intentarlo.",
                     ErrFondo, ErrBorde, ErrTexto)
             }
         },
         confirmButton = {
             Button(
-                onClick = onConfirmar,
-                enabled = !eliminando,
+                onClick = { onConfirmar(motivo) },
+                enabled = !eliminando && motivo.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(containerColor = ErrTexto),
                 shape = RoundedCornerShape(4.dp)
             ) {

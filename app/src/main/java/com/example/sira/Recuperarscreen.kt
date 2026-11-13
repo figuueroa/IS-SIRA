@@ -71,7 +71,7 @@ data class RecuperarUiState(
 )
 
 class RecuperarViewModel(
-    private val repo: AuthRepository = FakeAuthRepository()
+    private val repo: AuthRepository = ServiciosAuth.repositorio
 ) : ViewModel() {
     private val _ui = MutableStateFlow(RecuperarUiState())
     val ui: StateFlow<RecuperarUiState> = _ui.asStateFlow()

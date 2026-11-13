@@ -1,0 +1,23 @@
+{
+  "name": "sira-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "API REST de SIRA: conecta la app Android con SQL Server",
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node --env-file=.env src/index.js",
+    "dev": "node --env-file=.env --watch src/index.js",
+    "seed:dev": "node --env-file=.env scripts/seed-dev.js",
+    "set-password": "node --env-file=.env scripts/set-password.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "express": "^5.1.0",
+    "mssql": "^11.0.1"
+  }
+}

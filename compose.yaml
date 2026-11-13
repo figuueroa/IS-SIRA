@@ -1,0 +1,18 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: sira-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Copia .env.example a .env y define MSSQL_SA_PASSWORD}
+    ports:
+      - "1433:1433"
+    volumes:
+      - sira_sqlserver_data:/var/opt/mssql
+      - ./database:/scripts:ro
+      - ./server/sql:/server-sql:ro
+    restart: unless-stopped
+
+volumes:
+  sira_sqlserver_data:

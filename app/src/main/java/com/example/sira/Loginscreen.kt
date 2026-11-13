@@ -36,9 +36,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /* ---------------- Autenticación ----------------
- * Hoy: repositorio de prueba. Cuando exista la base de datos, crea otra clase que
- * implemente AuthRepository (Retrofit al servidor, Room, etc.) y pásala al ViewModel.
- * La contraseña debe compararse cifrada en el servidor, nunca en la app. */
+ * Con USAR_SERVIDOR: ApiAuthRepository (Api.kt); el servidor compara el hash bcrypt y emite la sesión.
+ * Sin servidor: FakeAuthRepository con las cuentas demo de BuildConfig (solo debug). */
+object ServiciosAuth {
+    val repositorio: AuthRepository =
+        if (BuildConfig.USAR_SERVIDOR) ApiAuthRepository() else FakeAuthRepository()
+}
+
 interface AuthRepository {
     suspend fun iniciarSesion(correo: String, clave: String): ResultadoAutenticacion
 
@@ -113,10 +117,11 @@ sealed interface EstadoLogin {
     data class Exito(val rol: RolDemo, val correo: String) : EstadoLogin
     data object Error : EstadoLogin
     data object Bloqueado : EstadoLogin
+    data object SinConexion : EstadoLogin
 }
 
 class LoginViewModel(
-    private val repo: AuthRepository = FakeAuthRepository()
+    private val repo: AuthRepository = ServiciosAuth.repositorio
 ) : ViewModel() {
     private val _estado = MutableStateFlow<EstadoLogin>(EstadoLogin.Inactivo)
     val estado: StateFlow<EstadoLogin> = _estado.asStateFlow()
@@ -130,9 +135,10 @@ class LoginViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                ResultadoAutenticacion.CredencialesInvalidas
+                // Servidor apagado, URL equivocada o error interno: no es culpa de la contraseña.
+                _estado.value = EstadoLogin.SinConexion
+                return@launch
             }
-            // La pantalla se queda aquí. Más adelante: navegar al panel según el rol.
             _estado.value = when (resultado) {
                 is ResultadoAutenticacion.Exito -> EstadoLogin.Exito(resultado.rol, resultado.correo)
                 ResultadoAutenticacion.CredencialesInvalidas -> EstadoLogin.Error
@@ -247,6 +253,7 @@ fun LoginScreen(vm: LoginViewModel = viewModel(), onExito: (RolDemo, String) -> 
                     is EstadoLogin.Exito -> Mensaje("Inicio de sesión exitoso como ${actual.rol.etiqueta}. Redirigiendo…", OkFondo, OkBorde, OkTexto)
                     EstadoLogin.Error -> Mensaje("Correo o contraseña incorrectos.", ErrFondo, ErrBorde, ErrTexto)
                     EstadoLogin.Bloqueado -> Mensaje("Cuenta bloqueada tras 3 intentos fallidos. Contacte al administrador.", ErrFondo, ErrBorde, ErrTexto)
+                    EstadoLogin.SinConexion -> Mensaje("No se pudo conectar con el servidor de SIRA. Revise su conexión e intente de nuevo.", ErrFondo, ErrBorde, ErrTexto)
                     else -> {}
                 }
             }

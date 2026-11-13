@@ -89,7 +89,8 @@ fun RespaldosScreen(
         Text("RESPALDO DE INFORMACIÓN · I-14", color = Gris, fontSize = 12.sp, letterSpacing = 1.sp,
             modifier = Modifier.padding(bottom = 10.dp))
         Mensaje(
-            "Prototipo: por ahora solo se registra el respaldo en memoria; todavía no se crea un archivo real.",
+            if (BuildConfig.USAR_SERVIDOR) "El servidor ejecuta BACKUP DATABASE y guarda el .bak en la carpeta configurada (BACKUP_DIR)."
+            else "Prototipo: por ahora solo se registra el respaldo en memoria; todavía no se crea un archivo real.",
             FondoTarjeta, BordeTarjeta, Gris
         )
 

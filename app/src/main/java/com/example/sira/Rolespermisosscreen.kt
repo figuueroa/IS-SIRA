@@ -100,7 +100,8 @@ fun RolesPermisosScreen(
         Text("CENTRAL DE ROLES Y PERMISOS · I-13", color = Gris, fontSize = 12.sp, letterSpacing = 1.sp,
             modifier = Modifier.padding(bottom = 10.dp))
         Mensaje(
-            "Prototipo: los cambios de rol se guardan solo en memoria mientras la app está abierta. " +
+            if (BuildConfig.USAR_SERVIDOR) "El cambio de rol se aplica en el servidor y cierra las sesiones abiertas de esa persona."
+            else "Prototipo: los cambios de rol se guardan solo en memoria mientras la app está abierta. " +
                     "Los permisos reales dependerán del backend.",
             FondoTarjeta, BordeTarjeta, Gris
         )

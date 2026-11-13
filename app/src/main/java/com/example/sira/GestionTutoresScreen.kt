@@ -16,6 +16,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -45,8 +46,11 @@ sealed interface EstadoRegistroTutor {
 }
 
 class GestionTutoresViewModel(
-    private val repo: TutoresRepository = ServiciosTutores.repositorio
+    private val repo: TutoresRepository = ServiciosTutores.repositorio,
+    private val alumnosRepo: IncidenciasRepository = Servicios.incidencias
 ) : ViewModel() {
+    private val _alumnos = MutableStateFlow<List<Alumno>>(emptyList())
+    val alumnos = _alumnos.asStateFlow()
     private val _estado = MutableStateFlow<EstadoRegistroTutor>(EstadoRegistroTutor.Inactivo)
     val estado = _estado.asStateFlow()
     private val _vinculados = MutableStateFlow<List<TutorVinculado>>(emptyList())
@@ -63,6 +67,7 @@ class GestionTutoresViewModel(
     private suspend fun cargarVinculos() {
         _cargandoLista.value = true
         try {
+            if (_alumnos.value.isEmpty()) _alumnos.value = alumnosRepo.listarAlumnos()
             _vinculados.value = repo.listar()
             _cargandoLista.value = false
             _errorCarga.value = false
@@ -117,20 +122,26 @@ fun GestionTutoresScreen(
     val vinculados by vm.vinculados.collectAsStateWithLifecycle()
     val cargandoLista by vm.cargandoLista.collectAsStateWithLifecycle()
     val errorCarga by vm.errorCarga.collectAsStateWithLifecycle()
-    val alumnos = alumnosPrueba
+    val alumnos by vm.alumnos.collectAsStateWithLifecycle()
     val opcionesAlumno = alumnos.map { "${it.matricula} · ${it.nombre}" }
     var alumnoOpcion by rememberSaveable { mutableStateOf(opcionesAlumno.firstOrNull().orEmpty()) }
+    LaunchedEffect(opcionesAlumno) {
+        if (alumnoOpcion !in opcionesAlumno) alumnoOpcion = opcionesAlumno.firstOrNull().orEmpty()
+    }
     var nombre by rememberSaveable { mutableStateOf("") }
     var correo by rememberSaveable { mutableStateOf("") }
     var telefono by rememberSaveable { mutableStateOf("") }
     val alumnoSeleccionado = alumnos.firstOrNull { "${it.matricula} · ${it.nombre}" == alumnoOpcion }
 
     SiraScaffold(Seccion.GestionTutores, RolDemo.Administrador, onNavegar, onCerrarSesion) {
-        Text("REGISTRO DE TUTORES · DEMOSTRACIÓN", color = Gris, fontSize = 12.sp, letterSpacing = 1.sp,
-            modifier = Modifier.padding(bottom = 10.dp))
+        Text(if (BuildConfig.USAR_SERVIDOR) "REGISTRO DE TUTORES" else "REGISTRO DE TUTORES · DEMOSTRACIÓN",
+            color = Gris, fontSize = 12.sp, letterSpacing = 1.sp, modifier = Modifier.padding(bottom = 10.dp))
 
         Mensaje(
-            "Los datos solo viven en memoria durante esta ejecución; se pierden al cerrar la app. No crea una cuenta, no inicia sesión, no envía notificaciones ni sincroniza con el servidor.",
+            if (BuildConfig.USAR_SERVIDOR)
+                "Se guarda en el servidor. Si el correo es nuevo se crea una cuenta familiar pendiente de activación."
+            else
+                "Los datos solo viven en memoria durante esta ejecución; se pierden al cerrar la app. No crea una cuenta, no inicia sesión, no envía notificaciones ni sincroniza con el servidor.",
             FondoTarjeta, BordeTarjeta, Gris
         )
 

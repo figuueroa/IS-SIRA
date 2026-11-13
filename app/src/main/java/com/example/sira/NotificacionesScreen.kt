@@ -118,7 +118,7 @@ fun NotificacionesScreen(
             }
             is EstadoNotificaciones.Listo -> when {
                 actual.avisos.isEmpty() -> Mensaje(
-                    if (correoTutor == null) "Aún no se han registrado incidencias durante esta ejecución."
+                    if (correoTutor == null) "Aún no se han registrado incidencias."
                     else "No hay incidencias nuevas para tus hijos asociados.",
                     FondoTarjeta, BordeTarjeta, Gris
                 )

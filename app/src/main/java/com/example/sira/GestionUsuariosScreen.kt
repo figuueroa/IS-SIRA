@@ -111,7 +111,8 @@ fun GestionUsuariosScreen(
         Text("REGISTRO DE USUARIOS · PROTOTIPO", color = Gris, fontSize = 12.sp, letterSpacing = 1.sp,
             modifier = Modifier.padding(bottom = 10.dp))
         Mensaje(
-            "Esta pantalla crea perfiles solo en memoria mientras la app está abierta. No genera credenciales, no inicia sesión ni aplica permisos; eso dependerá del backend y sus reglas.",
+            if (BuildConfig.USAR_SERVIDOR) "La cuenta se crea en el servidor pendiente de activación; la persona fija su contraseña con el enlace de activación."
+            else "Esta pantalla crea perfiles solo en memoria mientras la app está abierta. No genera credenciales, no inicia sesión ni aplica permisos; eso dependerá del backend y sus reglas.",
             FondoTarjeta, BordeTarjeta, Gris
         )
 

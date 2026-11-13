@@ -29,7 +29,8 @@ interface TutoresRepository {
 }
 
 object ServiciosTutores {
-    val repositorio: TutoresRepository = FakeTutoresRepository()
+    val repositorio: TutoresRepository =
+        if (BuildConfig.USAR_SERVIDOR) ApiTutoresRepository() else FakeTutoresRepository()
 }
 
 enum class RolDemo(val etiqueta: String) {
@@ -51,7 +52,8 @@ interface UsuariosRepository {
 }
 
 object ServiciosUsuarios {
-    val repositorio: UsuariosRepository = FakeUsuariosRepository()
+    val repositorio: UsuariosRepository =
+        if (BuildConfig.USAR_SERVIDOR) ApiUsuariosRepository() else FakeUsuariosRepository()
 }
 
 private class FakeUsuariosRepository : UsuariosRepository {
@@ -77,8 +79,8 @@ private class FakeUsuariosRepository : UsuariosRepository {
 }
 
 /* ---------------- Respaldos (I-14) ----------------
- * Hoy: la lista vive en memoria y "generar" solo agrega un registro (no crea archivo real).
- * Después: una clase que pida el respaldo al servidor/base de datos. */
+ * Con USAR_SERVIDOR: el servidor ejecuta BACKUP DATABASE y registra dbo.BackupRuns.
+ * Sin servidor: la lista vive en memoria y "generar" solo agrega un registro (no crea archivo real). */
 data class Respaldo(val archivo: String, val fecha: Date, val correcto: Boolean = true)
 
 interface RespaldosRepository {
@@ -88,7 +90,8 @@ interface RespaldosRepository {
 }
 
 object ServiciosRespaldos {
-    val repositorio: RespaldosRepository = FakeRespaldosRepository()
+    val repositorio: RespaldosRepository =
+        if (BuildConfig.USAR_SERVIDOR) ApiRespaldosRepository() else FakeRespaldosRepository()
 }
 
 private class FakeRespaldosRepository : RespaldosRepository {
@@ -125,17 +128,20 @@ private class FakeTutoresRepository : TutoresRepository {
 }
 
 data class Incidencia(
-    val id: Int,
+    /** En la base es un UNIQUEIDENTIFIER (texto); en la demo local, un número como texto. */
+    val id: String,
     val alumno: Alumno,
     val tipo: String,
     val gravedad: String,
     val fecha: Date,
-    val descripcion: String = ""
+    val descripcion: String = "",
+    /** Folio legible (INC-2026-000123) generado por la base. */
+    val folio: String = ""
 )
 
 data class EventoBitacora(
-    val id: Int,
-    val incidenciaId: Int,
+    val id: String,
+    val incidenciaId: String,
     val accion: String,
     val alumno: Alumno,
     val tipo: String,
@@ -143,7 +149,8 @@ data class EventoBitacora(
     val fechaIncidente: Date,
     val registradoEn: Date,
     val resumen: String,
-    val actor: String? = null
+    val actor: String? = null,
+    val folio: String = ""
 )
 
 data class ResumenTipo(val tipo: String, val total: Int, val baja: Int, val media: Int, val fuerte: Int)
@@ -217,14 +224,16 @@ fun filtrarIncidencias(lista: List<Incidencia>, desde: Date, hasta: Date, tipo: 
     }
 
 /* ---------------- Acceso a datos ----------------
- * Hoy: todo vive en memoria (se reinicia al cerrar la app).
- * Después: crea otra clase que implemente IncidenciasRepository y consulte tu base de datos,
- * y cambia UNA línea en `Servicios` para usarla. */
+ * BuildConfig.USAR_SERVIDOR = true  → ApiIncidenciasRepository (Api.kt) → servidor → SQL Server.
+ * BuildConfig.USAR_SERVIDOR = false → FakeIncidenciasRepository: todo en memoria (demo sin servidor). */
 interface IncidenciasRepository {
     suspend fun buscarAlumno(texto: String): Alumno?
+    /** Alumnos que el usuario puede ver (para listas desplegables). */
+    suspend fun listarAlumnos(): List<Alumno>
     suspend fun registrar(alumno: Alumno, tipo: String, gravedad: String, fecha: Date, descripcion: String, foto: Uri?): Boolean
     suspend fun actualizar(incidencia: Incidencia): Boolean
-    suspend fun eliminar(id: Int): Boolean
+    /** El motivo es obligatorio: queda en dbo.IncidentDeletionAudit (HU-18 / RF-17). */
+    suspend fun eliminar(id: String, motivo: String): Boolean
     suspend fun listarIncidencias(): List<Incidencia>
     suspend fun listarBitacora(): List<EventoBitacora>
 
@@ -234,7 +243,8 @@ interface IncidenciasRepository {
 }
 
 object Servicios {
-    val incidencias: IncidenciasRepository = FakeIncidenciasRepository()
+    val incidencias: IncidenciasRepository =
+        if (BuildConfig.USAR_SERVIDOR) ApiIncidenciasRepository() else FakeIncidenciasRepository()
 }
 
 private object AlmacenLocal {
@@ -248,7 +258,8 @@ private object AlmacenLocal {
     private var siguienteEventoId = 1
 
     fun agregar(alumno: Alumno, tipo: String, gravedad: String, fecha: Date, descripcion: String) {
-        val incidencia = Incidencia(siguienteId++, alumno, tipo, gravedad, fecha, descripcion)
+        val id = siguienteId++
+        val incidencia = Incidencia(id.toString(), alumno, tipo, gravedad, fecha, descripcion, folio = "LOCAL-$id")
         incidencias += incidencia
         agregarEvento(incidencia, "Registrada", "Tipo: $tipo · Gravedad: $gravedad")
         version.value = version.value + 1
@@ -267,18 +278,18 @@ private object AlmacenLocal {
         version.value = version.value + 1
     }
 
-    fun eliminar(id: Int): Boolean {
+    fun eliminar(id: String, motivo: String): Boolean {
         val indice = incidencias.indexOfFirst { it.id == id }
         if (indice < 0) return false
         val eliminada = incidencias.removeAt(indice)
-        agregarEvento(eliminada, "Eliminada", "Incidencia eliminada")
+        agregarEvento(eliminada, "Eliminada", "Incidencia eliminada. Motivo: $motivo")
         version.value = version.value + 1
         return true
     }
 
     private fun agregarEvento(incidencia: Incidencia, accion: String, resumen: String) {
         bitacora += EventoBitacora(
-            id = siguienteEventoId++, incidenciaId = incidencia.id, accion = accion,
+            id = (siguienteEventoId++).toString(), incidenciaId = incidencia.id, folio = incidencia.folio, accion = accion,
             alumno = incidencia.alumno, tipo = incidencia.tipo, gravedad = incidencia.gravedad,
             fechaIncidente = incidencia.fecha, registradoEn = Date(), resumen = resumen
         )
@@ -315,6 +326,8 @@ class FakeIncidenciasRepository : IncidenciasRepository {
         return coincidencias.singleOrNull() // nunca asignar silenciosamente al primer alumno coincidente
     }
 
+    override suspend fun listarAlumnos(): List<Alumno> = AlmacenLocal.alumnos
+
     override suspend fun registrar(alumno: Alumno, tipo: String, gravedad: String, fecha: Date, descripcion: String, foto: Uri?): Boolean {
         delay(400)
         AlmacenLocal.agregar(alumno, tipo, gravedad, fecha, descripcion)   // aquí iría el guardado en la base y el aviso al tutor
@@ -329,9 +342,9 @@ class FakeIncidenciasRepository : IncidenciasRepository {
         return true
     }
 
-    override suspend fun eliminar(id: Int): Boolean {
+    override suspend fun eliminar(id: String, motivo: String): Boolean {
         delay(300)
-        return AlmacenLocal.eliminar(id)
+        return AlmacenLocal.eliminar(id, motivo)
     }
 
     override suspend fun listarIncidencias(): List<Incidencia> = AlmacenLocal.incidencias.toList()

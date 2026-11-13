@@ -30,9 +30,9 @@ import java.util.Date
 
 /* ---------------- I-04 · Registro de ingresos médicos ----------------
  * Cada visita de un alumno a enfermería: motivo de consulta y tratamiento aplicado.
- * Hoy: en memoria (se pierde al cerrar la app). Después: servidor/base de datos. */
+ * Con USAR_SERVIDOR: dbo.MedicalVisits. Sin servidor: en memoria (se pierde al cerrar la app). */
 data class IngresoMedico(
-    val id: Int,
+    val id: String,
     val matricula: String,
     val fecha: Date,
     val motivo: String,
@@ -46,7 +46,8 @@ interface IngresosMedicosRepository {
 }
 
 object ServiciosIngresos {
-    val repositorio: IngresosMedicosRepository = FakeIngresosMedicosRepository()
+    val repositorio: IngresosMedicosRepository =
+        if (BuildConfig.USAR_SERVIDOR) ApiIngresosMedicosRepository() else FakeIngresosMedicosRepository()
 }
 
 private class FakeIngresosMedicosRepository : IngresosMedicosRepository {
@@ -55,11 +56,11 @@ private class FakeIngresosMedicosRepository : IngresosMedicosRepository {
     private var siguienteId = 1
 
     override suspend fun listar(matricula: String): List<IngresoMedico> = mutex.withLock {
-        ingresos.filter { it.matricula == matricula }.sortedByDescending { it.id }
+        ingresos.filter { it.matricula == matricula }.reversed()
     }
 
     override suspend fun registrar(matricula: String, motivo: String, tratamiento: String): IngresoMedico = mutex.withLock {
-        IngresoMedico(siguienteId++, matricula, Date(), motivo, tratamiento).also { ingresos += it }
+        IngresoMedico((siguienteId++).toString(), matricula, Date(), motivo, tratamiento).also { ingresos += it }
     }
 }
 
@@ -192,7 +193,7 @@ fun IngresosMedicos(alumno: Alumno, vm: IngresosMedicosViewModel = viewModel()) 
             }
         }
 
-        Text("Prototipo: los ingresos se guardan solo en memoria mientras la app está abierta.",
+        Text(if (BuildConfig.USAR_SERVIDOR) "Los ingresos se guardan en el servidor." else "Prototipo: los ingresos se guardan solo en memoria mientras la app está abierta.",
             color = Gris, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp))
     }
 }
